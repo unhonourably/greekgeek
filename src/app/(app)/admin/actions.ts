@@ -7,6 +7,9 @@ import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { dbErrorMessage } from "@/lib/errors";
 import { parseDollarsToCents } from "@/lib/money";
+import { serverEnv } from "@/lib/env";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { emailManagers, emailUser } from "@/lib/product-email";
 import type { ActionState } from "@/lib/action-state";
 
 export async function reviewApplication(applicationId: string, _: ActionState, formData: FormData): Promise<ActionState> {
@@ -27,6 +30,41 @@ export async function reviewApplication(applicationId: string, _: ActionState, f
     p_internal_note: note || null,
   });
   if (error) return { error: dbErrorMessage(error) };
+  const { data: app } = await supabase
+    .from("chapter_applications")
+    .select("applicant_id, organization_name, designation, created_chapter_id")
+    .eq("id", applicationId)
+    .maybeSingle();
+  if (app?.applicant_id) {
+    const label = [app.organization_name, app.designation].filter(Boolean).join(" ") || "Your chapter";
+    let href = `${serverEnv.appUrl()}/onboarding/${applicationId}`;
+    if (decision.data === "verified" && app.created_chapter_id) {
+      const { data: chapter } = await supabase.from("chapters").select("slug").eq("id", app.created_chapter_id).maybeSingle();
+      if (chapter?.slug) href = `${serverEnv.appUrl()}/c/${chapter.slug}`;
+    }
+    const copy = {
+      verified: [`${label} is verified`, `${label} is verified. You are its administrator, and members can be invited.`],
+      info_requested: [`More information needed for ${label}`, message || "A reviewer needs more information before this chapter can be verified."],
+      rejected: [`${label} was not verified`, message || "This application was not verified."],
+      suspended: [`${label} was suspended`, message || "This chapter was suspended."],
+    } as const;
+    const [heading, paragraph] = copy[decision.data];
+    const delivered = await emailUser(app.applicant_id as string, {
+      subject: heading,
+      heading,
+      preheader: paragraph,
+      paragraphs: [paragraph],
+      action: { label: decision.data === "verified" ? "Open chapter" : "View application", url: href },
+    });
+    if (delivered) {
+      await createAdminClient()
+        .from("notifications")
+        .update({ email_status: "sent" })
+        .eq("user_id", app.applicant_id)
+        .eq("kind", "verification_update")
+        .eq("email_status", "pending");
+    }
+  }
   revalidatePath("/admin", "layout");
   const done = { verified: "Chapter verified. The applicant is now its administrator.", info_requested: "Request sent to the applicant.", rejected: "Application rejected.", suspended: "Chapter suspended." };
   return { ok: true, message: done[decision.data] };
@@ -52,8 +90,57 @@ export async function setChapterStatus(chapterId: string, _: ActionState, formDa
   const supabase = await createClient();
   const { error } = await supabase.rpc("platform_set_chapter_status", { p_chapter: chapterId, p_status: status.data, p_reason: reason });
   if (error) return { error: dbErrorMessage(error) };
+  const { data: chapter } = await supabase.from("chapters").select("organization_name, designation, slug").eq("id", chapterId).maybeSingle();
+  const label = [chapter?.organization_name, chapter?.designation].filter(Boolean).join(" ") || "The chapter";
+  const copy = {
+    verified: `${label} is verified. Members can use the chapter again.`,
+    suspended: `${label} was suspended. ${reason}`,
+    closed: `${label} was closed. ${reason}`,
+  } as const;
+  await emailManagers(chapterId, {
+    subject: `${label} is ${status.data}`,
+    heading: `${label} is ${status.data}`,
+    preheader: copy[status.data],
+    paragraphs: [copy[status.data]],
+    action: chapter?.slug && status.data !== "closed" ? { label: "Open chapter", url: `${serverEnv.appUrl()}/c/${chapter.slug}` } : null,
+  });
   revalidatePath("/admin/chapters", "layout");
   return { ok: true, message: "Status updated." };
+}
+
+export async function reviewClosure(requestId: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  await requireStaff([]);
+  const decision = z.enum(["accepted", "declined"]).safeParse(formData.get("decision"));
+  if (!decision.success) return { error: "Choose a decision." };
+  const note = String(formData.get("note") ?? "").trim().slice(0, 2000);
+  if (decision.data === "declined" && note.length < 3) return { fieldErrors: { note: "Tell the chapter why this was declined" } };
+  const supabase = await createClient();
+  const { data: request } = await supabase
+    .from("chapter_closure_requests")
+    .select("requested_by, chapter_id, chapter:chapters(organization_name, designation, slug)")
+    .eq("id", requestId)
+    .maybeSingle();
+  const { error } = await supabase.rpc("review_chapter_closure", { p_request: requestId, p_decision: decision.data, p_note: note || null });
+  if (error) return { error: dbErrorMessage(error) };
+  const rawChapter = request?.chapter as { organization_name?: string; designation?: string | null; slug?: string } | Array<{ organization_name?: string; designation?: string | null; slug?: string }> | null;
+  const chapter = Array.isArray(rawChapter) ? rawChapter[0] : rawChapter;
+  const label = [chapter?.organization_name, chapter?.designation].filter(Boolean).join(" ") || "Your chapter";
+  if (request?.chapter_id) {
+    const accepted = decision.data === "accepted";
+    await emailManagers(request.chapter_id as string, {
+      subject: accepted ? `${label} is closed` : `Closure request declined for ${label}`,
+      heading: accepted ? "The chapter is closed" : "Closure request declined",
+      preheader: accepted ? `${label} is now closed.` : `${label} stays open.`,
+      paragraphs: [
+        accepted
+          ? `${label} is closed. Members no longer have access. Financial records stay on file.`
+          : `${label} stays open.${note ? ` Note from GreekGeek: ${note}` : ""}`,
+      ],
+      action: !accepted && chapter?.slug ? { label: "Open chapter", url: `${serverEnv.appUrl()}/c/${chapter.slug}` } : null,
+    });
+  }
+  revalidatePath("/admin/closures");
+  return { ok: true, message: decision.data === "accepted" ? "Chapter closed." : "Request declined." };
 }
 
 const pricingSchema = z.object({

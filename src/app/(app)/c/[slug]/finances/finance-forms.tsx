@@ -140,7 +140,7 @@ export function IssueForm({
   initialExempt,
 }: {
   action: Action;
-  members: Array<{ id: string; name: string; memberClass: string; active: boolean }>;
+  members: Array<{ id: string; name: string; memberClass: string; active: boolean; inHouse: boolean }>;
   defaultCents: number;
   title: string;
   dueLabel: string;
@@ -149,7 +149,18 @@ export function IssueForm({
 }) {
   const [state, formAction] = useActionState(action, {});
   const [exempt, setExempt] = useState<string[]>(initialExempt);
-  const eligibleIds = useMemo(() => members.filter((m) => m.active && m.memberClass !== "alumni").map((m) => m.id), [members]);
+  const [residence, setResidence] = useState<"all" | "in" | "out">("all");
+  const covered = useMemo(
+    () =>
+      members.filter((m) => {
+        if (!m.active || m.memberClass === "alumni") return false;
+        if (residence === "all") return true;
+        if (m.memberClass !== "active") return false;
+        return residence === "in" ? m.inHouse : !m.inHouse;
+      }),
+    [members, residence],
+  );
+  const eligibleIds = useMemo(() => covered.map((m) => m.id), [covered]);
   const everyoneIds = useMemo(() => eligibleIds.filter((id) => !exempt.includes(id)), [eligibleIds, exempt]);
   const [mode, setMode] = useState<"everyone" | "custom">(eligibleIds.length > 0 ? "everyone" : "custom");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(eligibleIds));
@@ -178,7 +189,11 @@ export function IssueForm({
   }, [state]);
 
   const visible = useMemo(
-    () => members.filter((m) => (filter === "all" || m.memberClass === filter) && m.name.toLowerCase().includes(q.trim().toLowerCase())),
+    () =>
+      members.filter((m) => {
+        const house = filter === "in" ? m.inHouse : filter === "out" ? m.memberClass === "active" && !m.inHouse : filter === "all" || m.memberClass === filter;
+        return house && m.name.toLowerCase().includes(q.trim().toLowerCase());
+      }),
     [members, filter, q],
   );
   const allVisibleSelected = visible.length > 0 && visible.every((m) => selected.has(m.id));
@@ -216,6 +231,25 @@ export function IssueForm({
         <input key={`x-${id}`} type="hidden" name="exempt" value={id} />
       ))}
 
+      <Field label="Who this covers" htmlFor="residence" hint={residence === "all" ? "Active members, new members, and associates. Alumni are left out." : "Only active members. In house means they have a room right now."}>
+        <Select
+          id="residence"
+          value={residence}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === "all" || next === "in" || next === "out") {
+              setResidence(next);
+              setMode("everyone");
+              setConfirming(false);
+            }
+          }}
+        >
+          <option value="all">All members</option>
+          <option value="in">In house only</option>
+          <option value="out">Out of house only</option>
+        </Select>
+      </Field>
+
       <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Who gets charged">
         <ModeOption
           checked={mode === "everyone"}
@@ -225,8 +259,8 @@ export function IssueForm({
             setConfirming(false);
           }}
           icon={Users}
-          title={alreadyBilled > 0 ? "Everyone not yet charged" : "All members"}
-          body={eligibleIds.length > 0 ? `${noun(everyoneIds.length)}, ${formatCents(defaultCents)} each. Alumni${exempt.length ? " and exempt members" : ""} are not included.` : "No active members left to charge."}
+          title={residence === "in" ? "Every in-house active" : residence === "out" ? "Every out-of-house active" : alreadyBilled > 0 ? "Everyone not yet charged" : "All members"}
+          body={eligibleIds.length > 0 ? `${noun(everyoneIds.length)}, ${formatCents(defaultCents)} each.${exempt.length ? " Exempt members are not included." : ""}` : residence === "all" ? "No active members left to charge." : "Nobody in this group is left to charge."}
         />
         <ModeOption
           checked={mode === "custom"}
@@ -262,6 +296,8 @@ export function IssueForm({
               <option value="new_member">New members</option>
               <option value="associate">Associate</option>
               <option value="alumni">Alumni</option>
+              <option value="in">In house</option>
+              <option value="out">Out of house</option>
             </Select>
             <Button type="button" variant="ghost" size="sm" onClick={toggleAll}>
               {allVisibleSelected ? "Clear" : `Select ${visible.length}`}
@@ -288,7 +324,7 @@ export function IssueForm({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-ink">{m.name}</span>
-                  <span className="block text-[12px] text-ink-3">{CLASS_LABEL[m.memberClass] ?? m.memberClass}{m.active ? "" : " · inactive"}{exempt.includes(m.id) ? " · exempt" : ""}</span>
+                  <span className="block text-[12px] text-ink-3">{CLASS_LABEL[m.memberClass] ?? m.memberClass}{m.memberClass === "active" ? (m.inHouse ? " · In house" : " · Out of house") : ""}{m.active ? "" : " · inactive"}{exempt.includes(m.id) ? " · exempt" : ""}</span>
                 </span>
                 <span className="relative">
                   <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-ink-3">$</span>
@@ -318,9 +354,7 @@ export function IssueForm({
             "Choose at least one member."
           ) : (
             <>
-              Charge <span className="font-semibold">{custom ? "custom amounts" : `${formatCents(defaultCents)} each`}</span> to{" "}
-              <span className="font-semibold">{mode === "everyone" && recipients.length > 1 ? `all ${noun(recipients.length)}` : noun(recipients.length)}</span> for {title}
-              {exempt.length ? <span className="text-ink-2">, with {noun(exempt.length)} exempt</span> : null}.
+              Charge <span className="font-semibold">{custom ? "custom amounts" : `${formatCents(defaultCents)} each`}</span> to <span className="font-semibold">{mode === "everyone" && recipients.length > 1 ? `all ${recipients.length} ${residence === "in" ? "in-house members" : residence === "out" ? "out-of-house members" : "members"}` : noun(recipients.length)}</span> for {title}{exempt.length ? <span className="text-ink-2">, with {noun(exempt.length)} exempt</span> : null}.
             </>
           )}
         </p>
@@ -552,6 +586,95 @@ export function OfflinePaymentForm({
       <p className="text-[12px] text-ink-3">Offline payments have no platform fee. You cannot record your own payment.</p>
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Recording">Record payment</SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+type ChargeOption = { id: string; title: string; amount: number; dueDate: string; status: string; sentAfterJoin: boolean };
+
+const SHARES = [
+  { label: "Full", share: 1 },
+  { label: "3/4", share: 0.75 },
+  { label: "Half", share: 0.5 },
+  { label: "1/4", share: 0.25 },
+];
+
+export function AddChargeForm({ action, options, today, defaultDue }: { action: Action; options: ChargeOption[]; today: string; defaultDue: string }) {
+  const [state, formAction] = useActionState(action, {});
+  const [selected, setSelected] = useState(options[0]?.id ?? "");
+  const option = options.find((o) => o.id === selected) ?? options[0];
+  const dueFor = (o: ChargeOption | undefined) => (o && o.dueDate > defaultDue ? o.dueDate : defaultDue);
+  const [amount, setAmount] = useState(option ? (option.amount / 100).toFixed(2) : "");
+  const [due, setDue] = useState(dueFor(option));
+  const signature = options.map((o) => o.id).join();
+  const [seen, setSeen] = useState(signature);
+  const pick = (id: string) => {
+    const next = options.find((o) => o.id === id);
+    setSelected(id);
+    if (next) {
+      setAmount((next.amount / 100).toFixed(2));
+      setDue(dueFor(next));
+    }
+  };
+  if (seen !== signature) {
+    setSeen(signature);
+    if (options[0]) pick(options[0].id);
+  }
+  if (!option) {
+    return (
+      <div className="space-y-3">
+        <FormMessage state={state} />
+        <p className="text-sm text-ink-3">This member has every charge that has gone out.</p>
+      </div>
+    );
+  }
+  const cents = parseDollarsToCents(amount);
+  return (
+    <form action={formAction} className="space-y-4" noValidate>
+      <FormMessage state={state} />
+      <Field label="Assessment" htmlFor="ac_assessment">
+        <Select id="ac_assessment" name="assessment" value={option.id} onChange={(e) => pick(e.target.value)}>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.title} · {formatCents(o.amount)}{o.status === "closed" ? " · closed" : ""}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <p className="-mt-2 text-[12px] text-ink-3">
+        {option.sentAfterJoin ? "This went out after they joined, so they may have been left off on purpose." : "This went out before they joined."}
+      </p>
+      <Field label="Amount" htmlFor="ac_amount" error={state.fieldErrors?.amount}>
+        <Input id="ac_amount" name="amount" inputMode="decimal" className="tnum" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </Field>
+      <div className="-mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Prorate">
+        {SHARES.map((s) => {
+          const value = (Math.max(50, Math.round(option.amount * s.share)) / 100).toFixed(2);
+          return (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => setAmount(value)}
+              className={cx(
+                "rounded-full border px-2.5 py-1 text-[12px] transition-colors",
+                amount === value ? "border-accent/60 bg-accent/10 text-ink" : "border-line text-ink-3 hover:border-line-strong hover:text-ink-2",
+              )}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+      <Field label="Due" htmlFor="ac_due" error={state.fieldErrors?.due_date} hint={option.dueDate < today ? "The original due date has passed, so this defaults to two weeks out." : undefined}>
+        <Input id="ac_due" name="due_date" type="date" min={today} value={due} onChange={(e) => setDue(e.target.value)} />
+      </Field>
+      <p className="text-[12px] text-ink-3">
+        {cents !== null && cents !== option.amount ? `Everyone else was charged ${formatCents(option.amount)}. ` : ""}
+        The member is notified and can pay online right away.
+      </p>
+      <div className="flex justify-end">
+        <SubmitButton pendingLabel="Charging">Add charge</SubmitButton>
       </div>
     </form>
   );

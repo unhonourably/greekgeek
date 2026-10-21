@@ -17,6 +17,7 @@ import {
   House,
   Landmark,
   LayoutDashboard,
+  ClipboardList,
   Megaphone,
   MessagesSquare,
   Receipt,
@@ -32,6 +33,7 @@ import { cx } from "@/components/ui";
 
 const ICONS = {
   overview: LayoutDashboard,
+  setup: ClipboardList,
   chat: MessagesSquare,
   announcements: Megaphone,
   events: CalendarDays,
@@ -54,6 +56,7 @@ const ICONS = {
   reconciliation: Scale,
   pricing: Tag,
   audit: ScrollText,
+  closures: ClipboardList,
 } satisfies Record<string, LucideIcon>;
 
 export type NavItem = { key: keyof typeof ICONS; label: string; href: string; badge?: number; exact?: boolean; tag?: string };
@@ -125,13 +128,19 @@ export function SubNav({ items }: { items: Array<{ label: string; href: string; 
   );
 }
 
-function NavIcon({ icon: Icon, active }: { icon: LucideIcon; active: boolean }) {
+function isIcon(icon: unknown): icon is LucideIcon {
+  if (typeof icon === "function") return true;
+  if (!icon || typeof icon !== "object") return false;
+  const candidate = icon as { $$typeof?: unknown; render?: unknown };
+  return typeof candidate.$$typeof === "symbol" && typeof candidate.render === "function";
+}
+
+function NavIcon({ icon, active }: { icon: LucideIcon | undefined; active: boolean }) {
   const { pending } = useLinkStatus();
-  return pending ? (
-    <LoaderCircle className="size-4 shrink-0 animate-spin text-accent" aria-hidden />
-  ) : (
-    <Icon className={cx("size-4 shrink-0", active ? "text-accent" : "text-ink-3")} aria-hidden />
-  );
+  if (pending) return <LoaderCircle className="size-4 shrink-0 animate-spin text-accent" aria-hidden />;
+  if (!isIcon(icon)) return <span className="size-4 shrink-0" />;
+  const Icon = icon;
+  return <Icon className={cx("size-4 shrink-0", active ? "text-accent" : "text-ink-3")} aria-hidden />;
 }
 
 function SubNavLabel({ label }: { label: string }) {

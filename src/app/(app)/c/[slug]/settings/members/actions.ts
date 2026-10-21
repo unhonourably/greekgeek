@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getMyProfile, requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -101,6 +102,17 @@ export async function revokeInvitation(slug: string, invitationId: string): Prom
   const { error } = await supabase.from("chapter_invitations").update({ status: "revoked" }).eq("id", invitationId).eq("chapter_id", chapter.id).eq("status", "pending");
   if (error) throw new Error(dbErrorMessage(error));
   revalidatePath(`/c/${slug}/settings/members`);
+}
+
+export async function removeMember(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  await requireChapter(slug, "members.manage");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 3) return { fieldErrors: { reason: "Give a reason" } };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_chapter_member", { p_membership: membershipId, p_reason: reason.slice(0, 300) });
+  if (error) return { error: dbErrorMessage(error) };
+  revalidatePath(`/c/${slug}`, "layout");
+  redirect(`/c/${slug}/settings/members`);
 }
 
 export async function updateMember(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {

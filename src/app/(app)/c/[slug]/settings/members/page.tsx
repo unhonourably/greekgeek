@@ -28,6 +28,7 @@ type DirectoryRow = {
   status: MembershipStatus;
   joined_at: string;
   roles: RoleChip[];
+  in_house?: boolean | null;
   total_count: number;
 };
 
@@ -115,6 +116,9 @@ export default async function MembersSettingsPage({ params, searchParams }: Page
                         </Td>
                         <Td>
                           {MEMBER_CLASS_LABEL[m.member_class]}
+                          {m.member_class === "active" && typeof m.in_house === "boolean" ? (
+                            <Badge className="ml-1.5" tone={m.in_house ? "positive" : "neutral"}>{m.in_house ? "In house" : "Out of house"}</Badge>
+                          ) : null}
                           {m.status === "inactive" ? <Badge className="ml-1.5">{MEMBERSHIP_STATUS_LABEL.inactive}</Badge> : null}
                         </Td>
                         <Td><RoleBadges roles={m.roles} /></Td>

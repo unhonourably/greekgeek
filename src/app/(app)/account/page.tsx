@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { Avatar, personName } from "@/components/people";
-import { Card, CardBody, CardHeader, DefinitionList, Notice, PageHeader } from "@/components/ui";
+import { Card, CardBody, CardHeader, Notice, PageHeader, buttonClass } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { changePassword, removeAvatar, saveNotificationPreferences, saveProfile, uploadAvatar } from "./actions";
-import { AvatarForm, NotificationForm, PasswordForm, ProfileForm, type ProfileInitial } from "./account-forms";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { changeEmail, changePassword, deleteAccount, removeAvatar, saveNotificationPreferences, saveProfile, uploadAvatar } from "./actions";
+import { AvatarForm, DeleteAccountForm, EmailForm, NotificationForm, PasswordForm, ProfileForm, type ProfileInitial } from "./account-forms";
 
 export const metadata: Metadata = { title: "Account settings" };
 
@@ -34,6 +35,16 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
     visibility: (details?.visibility as Record<string, string>) ?? {},
   };
   const name = personName(profile ?? {});
+  const { data: challenges } = await createAdminClient()
+    .from("account_challenges")
+    .select("purpose, email, new_email, expires_at")
+    .eq("user_id", user.id)
+    .is("verified_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+  const open = (challenges ?? []) as Array<{ purpose: string; new_email: string | null }>;
+  const emailChallenge = open.find((row) => row.purpose === "email_current" || row.purpose === "email_new");
+  const emailStep = emailChallenge?.purpose === "email_new" ? "next" : emailChallenge?.purpose === "email_current" ? "current" : "start";
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8">
       <PageHeader title="Account settings" />
@@ -84,11 +95,26 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
             <CardHeader title="Sign-in" />
             <CardBody className="space-y-5">
               {sp.password === "changed" ? <Notice tone="positive">Password changed.</Notice> : null}
-              <DefinitionList items={[{ label: "Email", value: user.email }]} />
-              <PasswordForm action={changePassword} />
+              <EmailForm action={changeEmail} email={user.email} step={emailStep} pendingEmail={emailChallenge?.new_email ?? null} />
+              <PasswordForm action={changePassword} codeSent={open.some((row) => row.purpose === "password_change")} />
             </CardBody>
           </Card>
         </div>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Your data" description="Download a copy of your personal information, or delete your account." />
+          <CardBody className="grid gap-8 lg:grid-cols-2">
+            <div className="space-y-3">
+              <p className="text-sm text-ink-2">The file includes your profile, memberships, messages, and chapter applications. Financial records stay with your chapter and are not a full ledger export.</p>
+              <a href="/api/account/export" className={buttonClass("secondary")}>Download my data</a>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm text-ink-2">
+                Deletion removes your profile, photo, messages, and verification documents, and signs you out. Chapter payment records and an anonymized membership history are kept, because the chapter and tax rules require them. If you are the only administrator of a chapter, transfer that role first.
+              </p>
+              <DeleteAccountForm action={deleteAccount} email={user.email} />
+            </div>
+          </CardBody>
+        </Card>
       </div>
     </main>
   );

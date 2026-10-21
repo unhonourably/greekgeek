@@ -4,12 +4,14 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
+import { getStaffRole, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, zodState } from "@/lib/errors";
 import { hmac, randomCode, safeEqual } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email";
+import { renderEmailHtml } from "@/lib/email-template";
+import { deliver, emailPlatformAdmins } from "@/lib/product-email";
 import { serverEnv } from "@/lib/env";
 import { domainMatches } from "@/lib/names";
 import { rateLimit } from "@/lib/rate-limit";
@@ -212,12 +214,13 @@ export async function sendEmailCode(id: string, _: ActionState, formData: FormDa
   if (!z.email().safeParse(email).success) return { fieldErrors: { institutional_email: "Enter a valid email address" }, values };
 
   const supabase = await createClient();
+  const platformAdmin = (await getStaffRole()) === "admin";
   let domains: string[] = [];
   if (app.university_id) {
     const { data: uni } = await supabase.from("universities").select("email_domains").eq("id", app.university_id).maybeSingle();
     domains = (uni?.email_domains as string[] | undefined) ?? [];
   }
-  const allowed = domains.length > 0 ? domainMatches(email, domains) : /\.edu$/.test(email.split("@")[1] ?? "");
+  const allowed = platformAdmin || (domains.length > 0 ? domainMatches(email, domains) : /\.edu$/.test(email.split("@")[1] ?? ""));
   if (!allowed) {
     return {
       fieldErrors: {
@@ -233,6 +236,12 @@ export async function sendEmailCode(id: string, _: ActionState, formData: FormDa
     .update({ institutional_email: email, verification_method: "institutional_email" })
     .eq("id", app.id);
   if (updateError) return { error: dbErrorMessage(updateError), values };
+  if (platformAdmin) {
+    const { error: markError } = await createAdminClient().rpc("service_mark_institutional_email_verified", { p_application: app.id });
+    if (markError) return { error: "Could not confirm your email. Try again.", values };
+    revalidatePath(`/onboarding/${app.id}`);
+    return { ok: true, message: `${email} is confirmed.`, values };
+  }
 
   const code = randomCode(6);
   const admin = createAdminClient();
@@ -248,6 +257,14 @@ export async function sendEmailCode(id: string, _: ActionState, formData: FormDa
     to: email,
     subject: "Your chapter verification code",
     text: `Your verification code is ${code}.\n\nIt expires in 15 minutes. If you did not request it, you can ignore this email.`,
+    html: renderEmailHtml({
+      appUrl: serverEnv.appUrl(),
+      preheader: "Your chapter verification code expires in 15 minutes.",
+      heading: "Your verification code",
+      paragraphs: ["Enter this code to confirm your school email. It expires in 15 minutes."],
+      code,
+      note: "If you didn't request this, you can ignore this email.",
+    }),
   });
   revalidatePath(`/onboarding/${app.id}`);
   const devNote = !result.delivered && !serverEnv.isProduction() ? ` Email delivery is not configured, so the code is ${code}.` : "";
@@ -341,8 +358,49 @@ export async function submitApplication(id: string, _: ActionState, formData: Fo
     const { error } = await supabase.rpc("respond_to_application", { p_application: app.id, p_message: response.slice(0, 4000) });
     if (error) return { error: dbErrorMessage(error) };
   }
-  const { error } = await supabase.rpc("submit_chapter_application", { p_application: app.id });
+  const { data, error } = await supabase.rpc("submit_chapter_application", { p_application: app.id });
   if (error) return { error: dbErrorMessage(error) };
+  const user = await requireUser("/onboarding");
+  const { data: submitted } = await supabase.from("chapter_applications").select("organization_name, designation, created_chapter_id").eq("id", app.id).maybeSingle();
+  const label = [submitted?.organization_name, submitted?.designation].filter(Boolean).join(" ") || "Your chapter";
+  if (data === "verified") {
+    let href = serverEnv.appUrl();
+    if (submitted?.created_chapter_id) {
+      const { data: chapter } = await supabase.from("chapters").select("slug").eq("id", submitted.created_chapter_id).maybeSingle();
+      if (chapter?.slug) href = `${serverEnv.appUrl()}/c/${chapter.slug}`;
+    }
+    await deliver({
+      to: user.email,
+      subject: `${label} is verified`,
+      heading: "Your chapter is verified",
+      preheader: `${label} is ready.`,
+      paragraphs: [`${label} is verified. You are its administrator, and you can invite members, publish announcements, and set up dues.`],
+      action: { label: "Open chapter", url: href },
+    });
+  } else {
+    await deliver({
+      to: user.email,
+      subject: `We received ${label}`,
+      heading: "We received your application",
+      preheader: `${label} is waiting for review.`,
+      paragraphs: [`We received the application for ${label}. A GreekGeek reviewer will look at it, and we'll email you when there's a decision.`],
+      action: { label: "View application", url: `${serverEnv.appUrl()}/onboarding/${app.id}` },
+    });
+    await emailPlatformAdmins({
+      subject: `Chapter application for ${label}`,
+      heading: "A chapter application is waiting",
+      preheader: `${label} was submitted for review.`,
+      paragraphs: [`${label} was submitted and is waiting for review.`],
+      action: { label: "Open the queue", url: `${serverEnv.appUrl()}/admin/verification` },
+    });
+  }
+  if (data === "verified") {
+    const { data: row } = await supabase.from("chapter_applications").select("created_chapter_id").eq("id", app.id).maybeSingle();
+    if (row?.created_chapter_id) {
+      const { data: chapter } = await supabase.from("chapters").select("slug").eq("id", row.created_chapter_id).maybeSingle();
+      if (chapter?.slug) redirect(`/c/${chapter.slug}`);
+    }
+  }
   redirect(`/onboarding/${app.id}`);
 }
 
@@ -354,6 +412,15 @@ export async function respondToApplication(id: string, _: ActionState, formData:
   const supabase = await createClient();
   const { error } = await supabase.rpc("respond_to_application", { p_application: app.id, p_message: message.slice(0, 4000) });
   if (error) return { error: dbErrorMessage(error) };
+  const { data: submitted } = await supabase.from("chapter_applications").select("organization_name, designation").eq("id", app.id).maybeSingle();
+  const label = [submitted?.organization_name, submitted?.designation].filter(Boolean).join(" ") || "A chapter";
+  await emailPlatformAdmins({
+    subject: `Reply on ${label}`,
+    heading: "An applicant replied",
+    preheader: `${label} sent a reply.`,
+    paragraphs: [`${label} sent a reply.`, message.slice(0, 2000)],
+    action: { label: "Open the queue", url: `${serverEnv.appUrl()}/admin/verification` },
+  });
   revalidatePath(`/onboarding/${app.id}`);
   return { ok: true, message: app.status === "rejected" ? "Appeal submitted. A reviewer will look at it again." : "Message sent to the reviewer." };
 }

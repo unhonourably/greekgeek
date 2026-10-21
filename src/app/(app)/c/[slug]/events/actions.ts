@@ -12,12 +12,13 @@ import { serverEnv } from "@/lib/env";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { checkInToken, verifyCheckInToken, CHECKIN_WINDOW_MS } from "@/lib/checkin";
 import { EVENT_CATEGORIES, type RsvpStatus } from "@/lib/events";
+import { parseImagePaths, richTextIsEmpty, sanitizeRichText } from "@/lib/rich-text";
 import { MEMBER_CLASS_LABEL } from "@/lib/permissions";
 import type { ActionState } from "@/lib/action-state";
 
 const schema = z.object({
   title: z.string().trim().min(2, "Use at least 2 characters").max(140),
-  description: z.string().trim().max(5000).optional(),
+  description: z.string().max(20000).optional(),
   location: z.string().trim().max(200).optional(),
   category: z.enum(EVENT_CATEGORIES).catch("chapter"),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
@@ -66,9 +67,12 @@ export async function saveEvent(slug: string, eventId: string | null, _: ActionS
     rsvpDeadline = at.toISOString();
   }
   const classes = formData.getAll("required_classes").map(String).filter((c) => c in MEMBER_CLASS_LABEL);
+  const description = sanitizeRichText(d.description ?? "");
+  if (description.length > 20000) return { fieldErrors: { description: "Shorten the details" } };
   const row = {
     title: d.title,
-    description: d.description || null,
+    description: richTextIsEmpty(description) ? null : description,
+    image_paths: parseImagePaths(String(formData.get("image_paths") ?? "[]"), chapter.id),
     location: d.location || null,
     category: d.category,
     starts_at: startsAt.toISOString(),

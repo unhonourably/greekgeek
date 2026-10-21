@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
-import { Card, CardBody, CardHeader, DefinitionList } from "@/components/ui";
+import { Card, CardBody, CardHeader, DefinitionList, Notice } from "@/components/ui";
 import { personName } from "@/components/people";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
-import { transferOwnership, updateChapterProfile, updateModules } from "./actions";
-import { ModulesForm, ProfileForm, TransferForm } from "./general-forms";
+import { requestClosure, transferOwnership, updateChapterProfile, updateModules } from "./actions";
+import { ClosureForm, ModulesForm, ProfileForm, TransferForm } from "./general-forms";
 
 const US_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu", "America/Puerto_Rico"];
 
@@ -19,7 +19,7 @@ export default async function GeneralSettingsPage({ params }: PageProps<"/c/[slu
     redirect(`/c/${slug}/settings/audit`);
   }
   const supabase = await createClient();
-  const [{ data: chapter }, members] = await Promise.all([
+  const [{ data: chapter }, members, { data: closureRows }] = await Promise.all([
     supabase.from("chapters").select("description, founded_year, greek_letters, timezone, modules, verified_at, slug, organization_name, designation").eq("id", ctx.chapter.id).single(),
     ctx.can("chapter.ownership")
       ? supabase
@@ -31,8 +31,15 @@ export default async function GeneralSettingsPage({ params }: PageProps<"/c/[slu
           .limit(500)
           .then((r) => r.data ?? [])
       : Promise.resolve([]),
+    supabase
+      .from("chapter_closure_requests")
+      .select("id, status, reason, created_at, decision_note")
+      .eq("chapter_id", ctx.chapter.id)
+      .order("created_at", { ascending: false })
+      .limit(1),
   ]);
   const timezones = Array.from(new Set([...US_ZONES, chapter?.timezone ?? "America/New_York", ...(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [])]));
+  const closure = (closureRows ?? [])[0] as { status: string; reason: string; decision_note: string | null } | undefined;
   const options = members
     .map((m) => ({ id: m.id as string, name: personName((m.profile ?? {}) as unknown as { display_name: string | null; full_name: string | null }) }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -49,12 +56,27 @@ export default async function GeneralSettingsPage({ params }: PageProps<"/c/[slu
             />
           </CardBody>
         </Card>
-        <Card>
+        <Card id="modules">
           <CardHeader title="Modules" description="Choose which programs your chapter uses." />
           <CardBody>
             <ModulesForm action={updateModules.bind(null, slug)} modules={(chapter?.modules ?? {}) as Record<string, boolean>} />
           </CardBody>
         </Card>
+        {ctx.chapter.status !== "closed" ? (
+          <Card>
+            <CardHeader title="Close this chapter" description="Members lose access only after a platform administrator accepts the request. Financial records stay with the chapter." />
+            <CardBody>
+              {closure?.status === "pending" ? (
+                <Notice tone="warning">Waiting for GreekGeek to review this request. The chapter stays open until it is accepted.</Notice>
+              ) : (
+                <div className="space-y-4">
+                  {closure?.status === "declined" ? <Notice>The last request was declined{closure.decision_note ? `: ${closure.decision_note}` : "."}</Notice> : null}
+                  <ClosureForm action={requestClosure.bind(null, slug)} />
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        ) : null}
       </div>
       <div className="space-y-6">
         <Card>

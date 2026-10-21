@@ -14,6 +14,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
     <>
       <AuthHeading title="Welcome back" description="Sign in to your chapter." />
       {error ? <Notice tone="danger" className="mb-5">That link is invalid or has expired. Sign in, or request a new link.</Notice> : null}
+      {sp.deleted === "1" ? <Notice tone="positive" className="mb-5">Your account and personal data have been deleted.</Notice> : null}
       <SignInForm next={next} />
       <AuthFooter>
         New to GreekGeek? <Link href={`/signup?next=${encodeURIComponent(next)}`} className={authLink}>Create an account</Link>

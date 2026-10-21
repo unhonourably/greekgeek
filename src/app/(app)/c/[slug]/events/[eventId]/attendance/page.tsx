@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { forbidden, notFound } from "next/navigation";
 import { Avatar, personName } from "@/components/people";
 import { Badge, Card, CardHeader, PageHeader, Stat, StatGrid, Table, Td, TextLink, Th, Tr } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
@@ -16,7 +16,7 @@ type Correction = { id: number; attendance_id: string; from_status: string | nul
 export default async function AttendancePage({ params }: PageProps<"/c/[slug]/events/[eventId]/attendance">) {
   const { slug, eventId } = await params;
   const { chapter, can } = await requireChapter(slug);
-  if (!can("attendance.view") && !can("attendance.manage")) notFound();
+  if (!can("attendance.view") && !can("attendance.manage")) forbidden();
   const canManage = can("attendance.manage");
   const supabase = await createClient();
   const { data } = await supabase.from("events").select(EVENT_COLUMNS).eq("id", eventId).eq("chapter_id", chapter.id).maybeSingle();

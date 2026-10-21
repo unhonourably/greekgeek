@@ -4,6 +4,7 @@ import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { utcToZonedParts } from "@/lib/timezone";
 import { EVENT_COLUMNS, type EventRow } from "@/lib/events";
+import { uploadChapterImage } from "../../../media-actions";
 import { saveEvent } from "../../actions";
 import { EventForm } from "../../event-form";
 
@@ -26,6 +27,7 @@ export default async function EditEventPage({ params }: PageProps<"/c/[slug]/eve
           <EventForm
             action={saveEvent.bind(null, slug, e.id)}
             timezone={tz}
+            upload={uploadChapterImage.bind(null, slug)}
             initial={{
               title: e.title,
               description: e.description ?? "",
@@ -40,6 +42,7 @@ export default async function EditEventPage({ params }: PageProps<"/c/[slug]/eve
               capacity: e.capacity ? String(e.capacity) : "",
               rsvp_deadline_date: deadline?.date ?? "",
               rsvp_deadline_time: deadline?.time ?? "",
+              image_paths: e.image_paths ?? [],
             }}
           />
         </CardBody>

@@ -10,8 +10,8 @@ import { MEMBER_CLASS_LABEL, MEMBERSHIP_STATUS_LABEL, type MemberClass, type Mem
 import { grantableRoles, listChapterRoles } from "@/lib/roles";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { listRecruiterCandidates, loadRecruiterCredits } from "@/lib/recruiters";
-import { assignRole, endRole, setRecruiter, updateMember } from "../actions";
-import { MemberEditForm, RecruiterForm, RoleAssignForm } from "../member-forms";
+import { assignRole, endRole, removeMember, setRecruiter, updateMember } from "../actions";
+import { MemberEditForm, RecruiterForm, RemoveMemberForm, RoleAssignForm } from "../member-forms";
 
 export default async function MemberSettingsPage({ params }: PageProps<"/c/[slug]/settings/members/[membershipId]">) {
   const { slug, membershipId } = await params;
@@ -85,6 +85,15 @@ export default async function MemberSettingsPage({ params }: PageProps<"/c/[slug
               {ended ? <Notice tone="info" title="Former member">{m.end_reason ? `Reason: ${m.end_reason}` : "This membership has ended and is kept for records."}</Notice> : null}
               {!isSelf && !ended ? (
                 <MemberEditForm action={updateMember.bind(null, slug, m.id as string)} memberClass={m.member_class as string} status={m.status as string} />
+              ) : null}
+              {!isSelf && !ended ? (
+                <div className="border-t border-line pt-4">
+                  <h3 className="text-sm font-medium text-ink">Remove from chapter</h3>
+                  <p className="mt-1 text-[13px] text-ink-3">Ends the membership, officer roles, chat access, and any current room assignment.</p>
+                  <div className="mt-3">
+                    <RemoveMemberForm action={removeMember.bind(null, slug, m.id as string)} name={name} />
+                  </div>
+                </div>
               ) : null}
               <DefinitionList
                 items={[

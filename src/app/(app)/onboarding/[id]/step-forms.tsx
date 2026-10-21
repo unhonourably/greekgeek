@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { FileUp, MailCheck } from "lucide-react";
-import { Badge, Checkbox, Field, Input, Select, Textarea, buttonClass, cx } from "@/components/ui";
+import { Badge, Checkbox, Field, Input, Notice, Select, Textarea, buttonClass, cx } from "@/components/ui";
 import { FormMessage, SubmitButton } from "@/components/forms";
 import type { ActionState } from "@/lib/action-state";
 import { INTENDED_ROLES, VERIFICATION_METHODS, type VerificationMethod } from "@/lib/applications";
@@ -112,6 +112,7 @@ export function VerificationForm({
   defaults,
   emailVerified,
   evidence,
+  skipped = false,
 }: {
   action: Action;
   sendCode: Action;
@@ -128,14 +129,16 @@ export function VerificationForm({
   };
   emailVerified: boolean;
   evidence: Array<{ id: string; file_name: string; kind: string }>;
+  skipped?: boolean;
 }) {
-  const [method, setMethod] = useState<VerificationMethod | "">(defaults.verification_method);
+  const [method, setMethod] = useState<VerificationMethod | "">(skipped ? "manual_review" : defaults.verification_method);
   const [state, formAction] = useActionState(action, {});
   return (
     <div className="space-y-6">
       <form id="verification-form" action={formAction} className="space-y-5" noValidate>
         <FormMessage state={state} />
-        <fieldset>
+        {skipped ? <input type="hidden" name="verification_method" value="manual_review" /> : null}
+        {skipped ? null : <fieldset>
           <legend className="text-[13px] font-medium text-ink">How should we confirm you represent this chapter?</legend>
           {state.fieldErrors?.verification_method ? <p className="mt-1 text-[13px] text-danger">{state.fieldErrors.verification_method}</p> : null}
           <div className="mt-2 space-y-2">
@@ -162,9 +165,15 @@ export function VerificationForm({
               </label>
             ))}
           </div>
-        </fieldset>
+        </fieldset>}
 
-        {method === "national_organization" ? (
+        {skipped ? (
+          <Notice tone="info" title="Verification is not required">
+            Your platform administrator role confirms the chapter. Continue to review, then create it.
+          </Notice>
+        ) : null}
+
+        {!skipped && method === "national_organization" ? (
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Contact name" htmlFor="national_contact_name" error={state.fieldErrors?.national_contact_name}>
               <Input id="national_contact_name" name="national_contact_name" defaultValue={defaults.national_contact_name} />
@@ -184,9 +193,11 @@ export function VerificationForm({
             </Field>
           </div>
         ) : null}
-        <Field label="Anything the reviewer should know" htmlFor="officer_statement" error={state.fieldErrors?.officer_statement} hint="Optional. For example, when you were elected or who else holds officer positions.">
-          <Textarea id="officer_statement" name="officer_statement" defaultValue={defaults.officer_statement} maxLength={2000} />
-        </Field>
+        {skipped ? null : (
+          <Field label="Anything the reviewer should know" htmlFor="officer_statement" error={state.fieldErrors?.officer_statement} hint="Optional. For example, when you were elected or who else holds officer positions.">
+            <Textarea id="officer_statement" name="officer_statement" defaultValue={defaults.officer_statement} maxLength={2000} />
+          </Field>
+        )}
       </form>
 
       {method === "institutional_email" ? <EmailVerification sendCode={sendCode} verifyCode={verifyCode} email={defaults.institutional_email} verified={emailVerified} /> : null}
@@ -285,7 +296,7 @@ export function EvidenceUpload({ upload, evidence }: { upload: Action; evidence:
   );
 }
 
-export function SubmitForm({ action, needsResponse }: { action: Action; needsResponse: boolean }) {
+export function SubmitForm({ action, needsResponse, confirmLabel }: { action: Action; needsResponse: boolean; confirmLabel?: string }) {
   const [state, formAction] = useActionState(action, {});
   return (
     <form action={formAction} className="space-y-5" noValidate>
@@ -300,7 +311,7 @@ export function SubmitForm({ action, needsResponse }: { action: Action; needsRes
         {state.fieldErrors?.attest ? <p className="mt-1 text-[13px] text-danger">{state.fieldErrors.attest}</p> : null}
       </div>
       <div className="flex justify-end">
-        <SubmitButton pendingLabel="Submitting">{needsResponse ? "Resubmit for review" : "Submit for review"}</SubmitButton>
+        <SubmitButton pendingLabel="Submitting">{confirmLabel ?? (needsResponse ? "Resubmit for review" : "Submit for review")}</SubmitButton>
       </div>
     </form>
   );

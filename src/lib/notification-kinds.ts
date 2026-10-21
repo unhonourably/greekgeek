@@ -1,4 +1,4 @@
-import { Bell, CalendarDays, ClipboardList, CreditCard, FileCheck2, Megaphone, MessageSquare, UserPlus, type LucideIcon } from "lucide-react";
+import { BedDouble, Bell, CalendarDays, ClipboardList, CreditCard, FileCheck2, Megaphone, MessageSquare, UserPlus, type LucideIcon } from "lucide-react";
 
 export const NOTIFICATION_ICON: Record<string, LucideIcon> = {
   dues_assessed: CreditCard,
@@ -14,6 +14,7 @@ export const NOTIFICATION_ICON: Record<string, LucideIcon> = {
   verification_update: FileCheck2,
   policy_update: FileCheck2,
   task_assigned: ClipboardList,
+  housing_update: BedDouble,
 };
 
 export function notificationIcon(kind: string): LucideIcon {

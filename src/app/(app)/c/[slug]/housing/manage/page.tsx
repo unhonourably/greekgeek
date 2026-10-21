@@ -2,7 +2,7 @@ import { Boxes, ClipboardCheck, Wrench } from "lucide-react";
 import { personName } from "@/components/people";
 import { SimpleForm } from "@/components/simple-form";
 import { SubmitButton } from "@/components/forms";
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, PageHeader, Table, Td, Th, TextLink, Tr } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, CardBody, CardHeader, EmptyState, PageHeader, Table, Td, Th, TextLink, Tr } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, requestTime } from "@/lib/format";
 import { activeMembers, requireModule, todayIn } from "@/lib/modules";
@@ -66,6 +66,7 @@ export default async function HousingManagePage({ params }: PageProps<"/c/[slug]
         eyebrow={<TextLink href={`/c/${slug}/housing`}>Housing</TextLink>}
         title="Manage housing"
         description="Maintenance queue, chore assignments, spaces, supplies, and inventory."
+        actions={<ButtonLink href={`/c/${slug}/housing/rooms`} variant="secondary">Rooms and residents</ButtonLink>}
       />
 
       <div className="space-y-8">

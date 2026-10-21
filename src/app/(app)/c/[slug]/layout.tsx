@@ -5,6 +5,7 @@ import { serverEnv } from "@/lib/env";
 import { Notice } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { getReadiness } from "@/lib/readiness";
+import { viewerIsPledge } from "@/lib/pledge";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ChapterLayout({ children, params }: LayoutProps<"/c/[slug]">) {
@@ -14,25 +15,26 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
   const base = `/c/${chapter.slug}`;
   const supabase = await createClient();
   const canSetupPayments = can("chapter.manage") || can("payments.configure");
-  const [{ data: unread }, readiness] = await Promise.all([
+  const [{ data: unread }, readiness, pledge] = await Promise.all([
     supabase.rpc("chapter_unread_total", { p_chapter: chapter.id }),
     canSetupPayments ? getReadiness(chapter.id) : Promise.resolve(null),
+    viewerIsPledge(chapter.id),
   ]);
   const modules = chapter.modules ?? {};
 
-  const groups: NavGroup[] = [
-    {
-      items: [
-        { key: "overview", label: "Overview", href: base, exact: true },
-        { key: "chat", label: "Messages", href: `${base}/chat`, badge: Number(unread ?? 0) },
-        { key: "announcements", label: "Announcements", href: `${base}/announcements` },
-        { key: "events", label: "Events", href: `${base}/events` },
-        { key: "directory", label: "Directory", href: `${base}/directory` },
-        { key: "dues", label: "My dues", href: `${base}/dues` },
-        { key: "reimbursements", label: "Reimbursements", href: `${base}/reimbursements` },
-      ],
-    },
-  ];
+  const home: NavGroup = {
+    items: [
+      { key: "overview", label: "Overview", href: base, exact: true },
+      { key: "chat", label: "Messages", href: `${base}/chat`, badge: Number(unread ?? 0) },
+      { key: "announcements", label: "Announcements", href: `${base}/announcements` },
+      { key: "events", label: "Events", href: `${base}/events` },
+      { key: "directory", label: "Directory", href: `${base}/directory` },
+      { key: "dues", label: "My dues", href: `${base}/dues` },
+      { key: "reimbursements", label: "Reimbursements", href: `${base}/reimbursements` },
+    ],
+  };
+  if (can("chapter.manage")) home.items.splice(1, 0, { key: "setup", label: "Setup", href: `${base}/setup` });
+  const groups: NavGroup[] = [home];
   const officer: NavGroup = { label: "Officers", items: [] };
   if (can("finance.view")) officer.items.push({ key: "finances", label: "Finances", href: `${base}/finances` });
   if (canSetupPayments) officer.items.push({ key: "payments", label: "Stripe setup", href: `${base}/settings/billing`, tag: readiness?.can_collect ? undefined : "Set up" });
@@ -42,7 +44,7 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
 
   const programs: NavGroup = { label: "Programs", items: [] };
   if (modules.philanthropy) programs.items.push({ key: "philanthropy", label: "Philanthropy", href: `${base}/philanthropy` });
-  if (modules.housing) programs.items.push({ key: "housing", label: "Housing", href: `${base}/housing` });
+  if (modules.housing && !pledge) programs.items.push({ key: "housing", label: "Housing", href: `${base}/housing` });
   if (modules.standards) programs.items.push({ key: "standards", label: "Standards", href: `${base}/standards` });
   if (modules.academics) programs.items.push({ key: "academics", label: "Academics", href: `${base}/academics` });
   if (programs.items.length) groups.push(programs);

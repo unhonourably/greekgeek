@@ -22,6 +22,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     groups.push({
       label: "Platform",
       items: [
+        { key: "closures", label: "Closures", href: "/admin/closures" },
         { key: "pricing", label: "Pricing", href: "/admin/pricing" },
         { key: "audit", label: "Audit log", href: "/admin/audit" },
       ],

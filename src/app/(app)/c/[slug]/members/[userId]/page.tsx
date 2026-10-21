@@ -8,7 +8,9 @@ import { ConfirmSubmit, SubmitButton } from "@/components/forms";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { MEMBER_CLASS_LABEL, type MemberClass } from "@/lib/permissions";
-import { formatDate } from "@/lib/format";
+import { viewerIsPledge } from "@/lib/pledge";
+import { todayIn } from "@/lib/modules";
+import { formatDate, requestTime } from "@/lib/format";
 import { awardBadge, revokeBadge, startDirectMessage } from "../actions";
 import { AwardForm } from "../award-form";
 
@@ -62,6 +64,18 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
     .map(([label, url]) => ({ label, url: safeLink(url) }))
     .filter((l): l is { label: string; url: string } => Boolean(l.url));
   const error = typeof sp.error === "string" ? sp.error.slice(0, 200) : null;
+  const pledge = await viewerIsPledge(ctx.chapter.id);
+  let livesIn: boolean | null = null;
+  if (!pledge && p.member_class === "active") {
+    const today = todayIn(tz, requestTime());
+    const { count } = await supabase
+      .from("room_assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("membership_id", p.membership_id)
+      .lte("starts_on", today)
+      .or(`ends_on.is.null,ends_on.gte.${today}`);
+    livesIn = (count ?? 0) > 0;
+  }
 
   return (
     <div className="space-y-6">
@@ -79,6 +93,11 @@ export default async function MemberProfilePage({ params, searchParams }: PagePr
               .filter(Boolean)
               .join(" · ")}
           </p>
+          {livesIn === null ? null : (
+            <div className="mt-2">
+              <Badge tone={livesIn ? "positive" : "neutral"}>{livesIn ? "In house" : "Out of house"}</Badge>
+            </div>
+          )}
           {p.roles.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {p.roles.map((r) => (

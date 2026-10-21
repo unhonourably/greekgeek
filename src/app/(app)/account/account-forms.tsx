@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui";
-import { FormMessage, SubmitButton } from "@/components/forms";
+import { ConfirmSubmit, FormMessage, SubmitButton } from "@/components/forms";
 import type { ActionState } from "@/lib/action-state";
 
 type Action = (state: ActionState, formData: FormData) => Promise<ActionState>;
@@ -126,11 +126,68 @@ export function AvatarForm({ action }: { action: Action }) {
   );
 }
 
-export function PasswordForm({ action }: { action: Action }) {
+export function EmailForm({
+  action,
+  email,
+  step,
+  pendingEmail,
+}: {
+  action: Action;
+  email: string;
+  step: "start" | "current" | "next";
+  pendingEmail: string | null;
+}) {
+  const [state, formAction] = useActionState(action, {});
+  const phase = state.values?.step === "done" ? "start" : ((state.values?.step as string | undefined) ?? step);
+  const nextAddress = (state.values?.new_email as string | undefined) || pendingEmail || "";
+  return (
+    <form action={formAction} className="space-y-4" noValidate>
+      <FormMessage state={state} />
+      <p className="text-sm text-ink-2">Sign-in email is <span className="text-ink">{email}</span>.</p>
+      {phase === "next" ? (
+        <>
+          <p className="text-sm text-ink-2">Enter the code sent to {nextAddress} to finish the change.</p>
+          <Field label="Code for the new email" htmlFor="email_code" error={state.fieldErrors?.code}>
+            <Input id="email_code" name="code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+          </Field>
+          <input type="hidden" name="new_email" value={nextAddress} />
+          <div className="flex flex-wrap justify-end gap-2">
+            <SubmitButton name="intent" value="resend_new" variant="ghost" pendingLabel="Sending">Send a new code</SubmitButton>
+            <SubmitButton name="intent" value="verify_new" pendingLabel="Updating">Update email</SubmitButton>
+          </div>
+        </>
+      ) : phase === "current" ? (
+        <>
+          <p className="text-sm text-ink-2">Enter the code sent to {email}. After that, {nextAddress || "the new address"} gets its own code.</p>
+          <Field label="Code for your current email" htmlFor="email_code" error={state.fieldErrors?.code}>
+            <Input id="email_code" name="code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+          </Field>
+          <input type="hidden" name="new_email" value={nextAddress} />
+          <div className="flex flex-wrap justify-end gap-2">
+            <SubmitButton name="intent" value="send" variant="ghost" pendingLabel="Sending">Send a new code</SubmitButton>
+            <SubmitButton name="intent" value="verify_current" pendingLabel="Checking">Confirm current email</SubmitButton>
+          </div>
+        </>
+      ) : (
+        <>
+          <Field label="New email" htmlFor="new_email" error={state.fieldErrors?.new_email}>
+            <Input id="new_email" name="new_email" type="email" autoComplete="email" defaultValue={nextAddress} />
+          </Field>
+          <div className="flex justify-end">
+            <SubmitButton name="intent" value="send" variant="secondary" pendingLabel="Sending">Email me a code</SubmitButton>
+          </div>
+        </>
+      )}
+    </form>
+  );
+}
+
+export function PasswordForm({ action, codeSent }: { action: Action; codeSent: boolean }) {
   const [state, formAction] = useActionState(action, {});
   const ref = useRef<HTMLFormElement>(null);
+  const showCode = codeSent || state.values?.step === "password_code";
   useEffect(() => {
-    if (state.ok) ref.current?.reset();
+    if (state.values?.step === "done") ref.current?.reset();
   }, [state]);
   return (
     <form ref={ref} action={formAction} className="space-y-4" noValidate>
@@ -144,8 +201,14 @@ export function PasswordForm({ action }: { action: Action }) {
       <Field label="Confirm new password" htmlFor="confirm" error={state.fieldErrors?.confirm}>
         <Input id="confirm" name="confirm" type="password" autoComplete="new-password" />
       </Field>
-      <div className="flex justify-end">
-        <SubmitButton variant="secondary" pendingLabel="Updating">Change password</SubmitButton>
+      {showCode ? (
+        <Field label="Email code" htmlFor="password_code" error={state.fieldErrors?.code} hint="Sent to your current email. It expires in 15 minutes.">
+          <Input id="password_code" name="code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
+        </Field>
+      ) : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        <SubmitButton name="intent" value="send" variant="ghost" pendingLabel="Sending">{showCode ? "Send a new code" : "Email me a code"}</SubmitButton>
+        {showCode ? <SubmitButton name="intent" value="confirm" pendingLabel="Updating">Update password</SubmitButton> : null}
       </div>
     </form>
   );
@@ -191,6 +254,21 @@ export function NotificationForm({
       <div className="flex justify-end">
         <SubmitButton variant="secondary" pendingLabel="Saving">Save notification settings</SubmitButton>
       </div>
+    </form>
+  );
+}
+
+export function DeleteAccountForm({ action, email }: { action: Action; email: string }) {
+  const [state, formAction] = useActionState(action, {});
+  return (
+    <form action={formAction} className="space-y-3" noValidate>
+      <FormMessage state={state} />
+      <Field label="Type your email to confirm" htmlFor="confirm_email" error={state.fieldErrors?.confirm_email} hint={email}>
+        <Input id="confirm_email" name="confirm_email" type="email" autoComplete="off" />
+      </Field>
+      <ConfirmSubmit message="Delete your account and personal data? This cannot be undone." variant="danger" size="md">
+        Delete my account
+      </ConfirmSubmit>
     </form>
   );
 }

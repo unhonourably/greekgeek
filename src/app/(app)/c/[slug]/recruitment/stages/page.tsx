@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { forbidden } from "next/navigation";
 import { Card, CardBody, CardHeader, Notice, PageHeader, TextLink } from "@/components/ui";
 import { deleteStage, saveStage } from "../actions";
 import { loadStages, requireRecruitment } from "../data";
@@ -8,7 +8,7 @@ export default async function StagesPage({ params, searchParams }: PageProps<"/c
   const { slug } = await params;
   const sp = await searchParams;
   const { chapter, can } = await requireRecruitment(slug);
-  if (!can("recruitment.manage")) notFound();
+  if (!can("recruitment.manage")) forbidden();
   const stages = await loadStages(chapter.id);
   const error = typeof sp.error === "string" ? sp.error.slice(0, 200) : null;
   return (

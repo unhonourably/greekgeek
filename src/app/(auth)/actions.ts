@@ -49,7 +49,14 @@ export async function signIn(_: ActionState, formData: FormData): Promise<Action
   const supabase = await createSessionClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) {
-    if (/confirm/i.test(error.message)) return { error: "Confirm your email first. Check your inbox for the link.", values };
+    if (/confirm/i.test(error.message)) {
+      const { data: confirmed } = await createAdminClient().rpc("service_confirm_admin_email", { p_email: parsed.data.email });
+      if (confirmed) {
+        const { error: retry } = await supabase.auth.signInWithPassword(parsed.data);
+        if (!retry) redirect(safeNext(formData.get("next")));
+      }
+      return { error: "Confirm your email first. Check your inbox for the link.", values };
+    }
     return { error: "That email and password do not match.", values };
   }
   redirect(safeNext(formData.get("next")));

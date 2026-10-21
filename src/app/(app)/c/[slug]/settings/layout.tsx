@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { forbidden } from "next/navigation";
 import { SubNav } from "@/components/chapter-nav";
 import { PageHeader } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
@@ -13,7 +13,7 @@ export default async function SettingsLayout({ children, params }: LayoutProps<"
   if (can("members.manage")) items.push({ label: "Members and invitations", href: `${base}/members` });
   if (can("roles.manage")) items.push({ label: "Roles", href: `${base}/roles` });
   if (can("audit.view")) items.push({ label: "Audit log", href: `${base}/audit` });
-  if (items.length === 0) notFound();
+  if (items.length === 0) forbidden();
   return (
     <>
       <PageHeader title="Settings" />

@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { personName } from "@/components/people";
 import { requireChapter, type ChapterContext } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { viewerIsPledge } from "@/lib/pledge";
 import type { ChapterModule, Permission } from "@/lib/permissions";
 
 export async function requireModule(slug: string, module: ChapterModule, permission?: Permission): Promise<ChapterContext> {
   const ctx = await requireChapter(slug, permission);
   if (!ctx.chapter.modules?.[module]) notFound();
+  if (module === "housing" && (await viewerIsPledge(ctx.chapter.id))) notFound();
   return ctx;
 }
 

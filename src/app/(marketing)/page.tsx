@@ -1,5 +1,6 @@
 import {
   BadgeCheck,
+  BedDouble,
   CalendarCheck,
   ClipboardList,
   HandCoins,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { Suspense } from "react";
 import { DuesExample, FeeCalculator, PricingEstimate } from "@/components/fee-calculator";
+import { ProductTour } from "@/components/product-tour";
 import { ButtonLink } from "@/components/ui";
 import { ESTIMATE_DEFAULTS, readEstimateParams, type EstimateInput } from "@/lib/estimate";
 import { formatBps } from "@/lib/fees";
@@ -25,7 +27,8 @@ const modules = [
   { icon: MessagesSquare, title: "Chapter chat", body: "Channels, direct messages, threads, mentions, and moderation tools, with membership tied to roles so access updates itself." },
   { icon: CalendarCheck, title: "Events and attendance", body: "RSVPs, capacity limits, QR check-in, required-attendance tracking, and corrections with a reason on record." },
   { icon: UserRoundSearch, title: "Recruitment", body: "A pipeline for prospects with stages, assignments, follow-ups, and notes that can be restricted to recruitment leadership." },
-  { icon: ClipboardList, title: "Standards and operations", body: "Policy acknowledgments, training, confidential incident reports, housing requests, philanthropy hours, and budgets." },
+  { icon: ClipboardList, title: "Standards and operations", body: "Policy acknowledgments, training, confidential incident reports, philanthropy hours, and budgets." },
+  { icon: BedDouble, title: "Chapter housing", body: "Rooms and beds, move-ins and move-outs, roommate requests, a live occupancy view, and rent billed straight to residents." },
   { icon: BadgeCheck, title: "Verified chapters", body: "Every chapter is reviewed before it can collect money or invite members, so the account you join is the real one." },
 ];
 
@@ -67,9 +70,19 @@ async function Home({ initial }: { initial: EstimateInput }) {
         </div>
       </section>
 
+      <section className="border-b border-line bg-surface/40">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mb-10 max-w-2xl">
+            <h2 className="font-serif text-2xl font-semibold tracking-tight">Try it before you sign up</h2>
+            <p className="mt-3 text-ink-2">These are the same screens officers and members use every week, filled with a sample chapter. Click around.</p>
+          </div>
+          <ProductTour />
+        </div>
+      </section>
+
       <section className="mx-auto max-w-6xl px-6 py-20">
         <h2 className="font-serif text-2xl font-semibold tracking-tight">What your officers get</h2>
-        <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
           {modules.map(({ icon: Icon, title, body }) => (
             <div key={title}>
               <Icon className="size-5 text-accent" aria-hidden />

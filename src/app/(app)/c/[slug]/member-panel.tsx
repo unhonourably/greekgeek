@@ -26,7 +26,7 @@ export type MemberOverview = {
   chapter: { active_members: number; joined_30d: number; events_7d: number; newest: Array<{ user_id: string; name: string; joined_at: string }> };
 };
 
-type Modules = { philanthropy?: boolean; housing?: boolean; standards?: boolean; academics?: boolean };
+type Modules = { philanthropy?: boolean; housing?: boolean; standards?: boolean; academics?: boolean; recruitment?: boolean };
 
 const RSVP: Record<string, { label: string; tone: "positive" | "neutral" | "warning" }> = {
   going: { label: "Going", tone: "positive" },
@@ -74,9 +74,9 @@ export function MemberTiles({ o, base, userId, modules }: { o: MemberOverview; b
   );
 }
 
-type Todo = { key: string; icon: LucideIcon; label: string; detail?: string; href: string; urgent?: boolean };
+type Todo = { key: string; icon: LucideIcon; label: string; detail?: string; href: string | null; urgent?: boolean };
 
-export function TodoCard({ o, base, modules, balanceDue }: { o: MemberOverview; base: string; modules: Modules; balanceDue: boolean }) {
+export function TodoCard({ o, base, modules, balanceDue, canRecruit }: { o: MemberOverview; base: string; modules: Modules; balanceDue: boolean; canRecruit: boolean }) {
   const today = new Date().toISOString().slice(0, 10);
   const items: Todo[] = [
     ...o.acks.map((a) => ({ key: `ack-${a.id}`, icon: Megaphone, label: a.title, detail: "Acknowledge announcement", href: `${base}/announcements#${a.id}`, urgent: true })),
@@ -85,7 +85,7 @@ export function TodoCard({ o, base, modules, balanceDue }: { o: MemberOverview; 
       icon: ClipboardList,
       label: t.title,
       detail: t.due_at ? `Due ${dayFmt.format(new Date(t.due_at))}` : "Assigned to you",
-      href: taskHref(base, t.module),
+      href: taskHref(base, t.module, modules, canRecruit),
       urgent: Boolean(t.due_at && t.due_at.slice(0, 10) <= today),
     })),
     ...(modules.housing ? o.chores.map((c) => ({ key: `chore-${c.id}`, icon: House, label: c.title, detail: c.due_on <= today ? "Chore due today" : `Chore due ${dayFmt.format(new Date(`${c.due_on}T00:00:00Z`))}`, href: `${base}/housing`, urgent: c.due_on <= today })) : []),
@@ -112,19 +112,33 @@ export function TodoCard({ o, base, modules, balanceDue }: { o: MemberOverview; 
         <ul className="divide-y divide-line border-t border-line">
           {items.map((t) => (
             <li key={t.key}>
-              <Link href={t.href} className="flex items-start gap-3 px-5 py-3 hover:bg-canvas/60">
-                <t.icon className={cx("mt-0.5 size-4 shrink-0", t.urgent ? "text-accent" : "text-ink-3")} aria-hidden />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-ink">{t.label}</span>
-                  {t.detail ? <span className={cx("block text-[12px]", t.urgent ? "text-accent" : "text-ink-3")}>{t.detail}</span> : null}
-                </span>
-              </Link>
+              {t.href ? (
+                <Link href={t.href} className="flex items-start gap-3 px-5 py-3 hover:bg-canvas/60">
+                  <TodoRow t={t} />
+                </Link>
+              ) : (
+                <div className="flex items-start gap-3 px-5 py-3">
+                  <TodoRow t={t} />
+                </div>
+              )}
             </li>
           ))}
           {extraTasks > 0 ? <li className="px-5 py-2.5 text-[12px] text-ink-3">{extraTasks} more assigned tasks</li> : null}
         </ul>
       )}
     </Card>
+  );
+}
+
+function TodoRow({ t }: { t: Todo }) {
+  return (
+    <>
+      <t.icon className={cx("mt-0.5 size-4 shrink-0", t.urgent ? "text-accent" : "text-ink-3")} aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-ink">{t.label}</span>
+        {t.detail ? <span className={cx("block text-[12px]", t.urgent ? "text-accent" : "text-ink-3")}>{t.detail}</span> : null}
+      </span>
+    </>
   );
 }
 
@@ -213,13 +227,13 @@ export function NewMembersCard({ o, base }: { o: MemberOverview; base: string })
   );
 }
 
-function taskHref(base: string, module: string): string {
-  if (module === "recruitment") return `${base}/recruitment`;
+function taskHref(base: string, module: string, modules: Modules, canRecruit: boolean): string | null {
+  if (module === "recruitment") return modules.recruitment && canRecruit ? `${base}/recruitment` : null;
   if (module === "events") return `${base}/events`;
-  if (module === "housing") return `${base}/housing`;
-  if (module === "philanthropy") return `${base}/philanthropy`;
+  if (module === "housing") return modules.housing ? `${base}/housing` : null;
+  if (module === "philanthropy") return modules.philanthropy ? `${base}/philanthropy` : null;
   if (module === "finance") return `${base}/dues`;
-  return base;
+  return null;
 }
 
 function formatHours(n: number): string {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
+import { PhotoPicker, RichEditor } from "@/components/rich-content";
+import { Checkbox, Field, Input, Select } from "@/components/ui";
 import { FormMessage, SubmitButton } from "@/components/forms";
 import { EVENT_CATEGORIES, EVENT_CATEGORY_LABEL } from "@/lib/events";
 import { MEMBER_CLASS_LABEL } from "@/lib/permissions";
@@ -21,9 +22,10 @@ export type EventFormInitial = {
   capacity: string;
   rsvp_deadline_date: string;
   rsvp_deadline_time: string;
+  image_paths?: string[];
 };
 
-export function EventForm({ action, initial, timezone }: { action: (s: ActionState, f: FormData) => Promise<ActionState>; initial?: EventFormInitial; timezone: string }) {
+export function EventForm({ action, initial, timezone, upload }: { action: (s: ActionState, f: FormData) => Promise<ActionState>; initial?: EventFormInitial; timezone: string; upload: (formData: FormData) => Promise<{ path?: string; error?: string }> }) {
   const [state, formAction] = useActionState(action, {});
   const [required, setRequired] = useState(initial?.attendance_required ?? false);
   const classes = new Set(initial?.required_classes ?? []);
@@ -58,9 +60,14 @@ export function EventForm({ action, initial, timezone }: { action: (s: ActionSta
         </Field>
       </div>
       <p className="-mt-2 text-[13px] text-ink-3">Times are in the chapter time zone, {timezone.replace(/_/g, " ")}.</p>
-      <Field label="Details" htmlFor="description" error={e.description}>
-        <Textarea id="description" name="description" defaultValue={initial?.description} maxLength={5000} className="min-h-24" />
+      <Field label="Details" htmlFor="description" error={e.description} hint="Format the write-up, add links, and insert pictures in the text.">
+        <RichEditor id="description" name="description" initial={initial?.description} upload={upload} />
       </Field>
+      <div className="space-y-1.5">
+        <p className="text-[13px] font-medium text-ink">Pictures</p>
+        <PhotoPicker name="image_paths" upload={upload} initial={initial?.image_paths} />
+        <p className="text-[13px] text-ink-3">Up to 6. These show on the event page.</p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Capacity" htmlFor="capacity" error={e.capacity} hint="Optional">
           <Input id="capacity" name="capacity" type="number" min={1} max={10000} defaultValue={initial?.capacity} />

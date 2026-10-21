@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { notFound, redirect } from "next/navigation";
+import { forbidden, notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { toPermissionSet, type Permission, type PermissionSet, type MemberClass, type MembershipStatus } from "@/lib/permissions";
 
@@ -102,7 +102,7 @@ export async function requireChapter(slug: string, permission?: Permission): Pro
   await requireUser(`/c/${slug}`);
   const ctx = await getChapterContext(slug);
   if (!ctx) notFound();
-  if (permission && !ctx.can(permission)) notFound();
+  if (permission && !ctx.can(permission)) forbidden();
   return ctx;
 }
 

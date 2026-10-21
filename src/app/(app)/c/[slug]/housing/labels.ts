@@ -21,6 +21,25 @@ export const SUPPLY_STATUS = {
   declined: { label: "Declined", tone: "neutral" },
 } as const satisfies Record<string, { label: string; tone: Tone }>;
 
+export const REQUEST_STATUS = {
+  submitted: { label: "Submitted", tone: "info" },
+  waitlisted: { label: "Waitlisted", tone: "warning" },
+  placed: { label: "Placed", tone: "positive" },
+  declined: { label: "Not placed", tone: "neutral" },
+  withdrawn: { label: "Withdrawn", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: Tone }>;
+
+export type Room = { id: string; name: string; floor: string | null; capacity: number; rent_cents: number | null; features: string[]; notes: string | null; archived_at: string | null };
+export type Assignment = { id: string; room_id: string; membership_id: string; bed_label: string | null; starts_on: string; ends_on: string | null; end_reason: string | null };
+
+export function isCurrent(a: Assignment, today: string): boolean {
+  return a.starts_on <= today && (a.ends_on === null || a.ends_on >= today);
+}
+
+export function isUpcoming(a: Assignment, today: string): boolean {
+  return a.starts_on > today;
+}
+
 export const FACILITY_KIND: Record<string, string> = {
   house: "House",
   room: "Room",

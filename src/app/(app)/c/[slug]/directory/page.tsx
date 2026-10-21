@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Search, UserPlus, Users } from "lucide-react";
 import { Avatar, RoleBadges, personName, type RoleChip } from "@/components/people";
-import { Card, EmptyState, Input, PageHeader, Select, TextLink, buttonClass } from "@/components/ui";
+import { Badge, Card, EmptyState, Input, PageHeader, Select, TextLink, buttonClass } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { MEMBER_CLASS_LABEL, type MemberClass } from "@/lib/permissions";
+import { viewerIsPledge } from "@/lib/pledge";
 import { listChapterRoles } from "@/lib/roles";
 
 const PAGE = 48;
@@ -18,6 +19,7 @@ type Row = {
   graduation_year: number | null;
   member_class: MemberClass;
   roles: RoleChip[];
+  in_house: boolean | null;
   total_count: number;
 };
 
@@ -26,8 +28,10 @@ export default async function DirectoryPage({ params, searchParams }: PageProps<
   const sp = await searchParams;
   const ctx = await requireChapter(slug);
   const { chapter } = ctx;
+  const pledge = await viewerIsPledge(chapter.id);
   const q = typeof sp.q === "string" ? sp.q.slice(0, 80) : "";
   const klass = typeof sp.class === "string" && sp.class in MEMBER_CLASS_LABEL ? (sp.class as MemberClass) : null;
+  const house = !pledge && (sp.house === "in" || sp.house === "out") ? sp.house : null;
   const roles = await listChapterRoles(chapter.id);
   const role = typeof sp.role === "string" && roles.some((r) => r.id === sp.role) ? sp.role : null;
   const page = Math.max(1, Number(typeof sp.page === "string" ? sp.page : 1) || 1);
@@ -40,6 +44,7 @@ export default async function DirectoryPage({ params, searchParams }: PageProps<
     p_status: null,
     p_limit: PAGE,
     p_offset: (page - 1) * PAGE,
+    p_residence: house,
   });
   const rows = (data ?? []) as Row[];
   const total = Number(rows[0]?.total_count ?? 0);
@@ -49,12 +54,13 @@ export default async function DirectoryPage({ params, searchParams }: PageProps<
     const s = new URLSearchParams();
     if (q) s.set("q", q);
     if (klass) s.set("class", klass);
+    if (house) s.set("house", house);
     if (role) s.set("role", role);
     if (p > 1) s.set("page", String(p));
     const str = s.toString();
     return str ? `${base}?${str}` : base;
   };
-  const filtered = Boolean(q || klass || role);
+  const filtered = Boolean(q || klass || role || house);
 
   return (
     <>
@@ -84,6 +90,13 @@ export default async function DirectoryPage({ params, searchParams }: PageProps<
             <option key={v} value={v}>{l}</option>
           ))}
         </Select>
+        {pledge ? null : (
+          <Select name="house" defaultValue={house ?? ""} aria-label="In house or out of house" className="w-44">
+            <option value="">In or out of house</option>
+            <option value="in">In house</option>
+            <option value="out">Out of house</option>
+          </Select>
+        )}
         <Select name="role" defaultValue={role ?? ""} aria-label="Role" className="w-48">
           <option value="">Any role</option>
           {roles.map((r) => (
@@ -106,9 +119,14 @@ export default async function DirectoryPage({ params, searchParams }: PageProps<
                 <Avatar name={personName(m)} path={m.avatar_path} size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{personName(m)}</span>
-                  <span className="block truncate text-xs text-ink-3">
-                    {MEMBER_CLASS_LABEL[m.member_class]}
-                    {m.graduation_year ? ` · ${m.graduation_year}` : ""}
+                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-xs text-ink-3">
+                      {MEMBER_CLASS_LABEL[m.member_class]}
+                      {m.graduation_year ? ` · ${m.graduation_year}` : ""}
+                    </span>
+                    {m.member_class === "active" && typeof m.in_house === "boolean" ? (
+                      <Badge tone={m.in_house ? "positive" : "neutral"}>{m.in_house ? "In house" : "Out of house"}</Badge>
+                    ) : null}
                   </span>
                   <RoleBadges roles={m.roles} className="mt-2" limit={2} />
                 </span>

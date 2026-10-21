@@ -35,9 +35,10 @@ export type EventRow = {
   rsvp_deadline: string | null;
   cancelled_at: string | null;
   created_by: string;
+  image_paths: string[];
 };
 
-export const EVENT_COLUMNS = "id, title, description, location, category, starts_at, ends_at, timezone, visibility, attendance_required, required_classes, capacity, rsvp_deadline, cancelled_at, created_by";
+export const EVENT_COLUMNS = "id, title, description, location, category, starts_at, ends_at, timezone, visibility, attendance_required, required_classes, capacity, rsvp_deadline, cancelled_at, created_by, image_paths";
 
 export function checkInOpen(e: Pick<EventRow, "starts_at" | "ends_at" | "cancelled_at">, now: number): boolean {
   if (e.cancelled_at) return false;

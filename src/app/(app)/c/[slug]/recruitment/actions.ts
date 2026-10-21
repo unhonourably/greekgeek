@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { forbidden, redirect } from "next/navigation";
 import { z } from "zod";
 import { getMyProfile, requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -117,7 +117,8 @@ export async function logActivity(slug: string, prospectId: string, _: ActionSta
 }
 
 export async function inviteProspect(slug: string, prospectId: string): Promise<void> {
-  const { chapter } = await requireChapter(slug, "members.manage");
+  const { chapter, can } = await requireChapter(slug);
+  if (!can("members.manage") && !can("recruitment.manage")) forbidden();
   const supabase = await createClient();
   const { data: p } = await supabase.from("prospects").select("full_name, email").eq("id", prospectId).eq("chapter_id", chapter.id).maybeSingle();
   const back = `/c/${slug}/recruitment/${prospectId}`;

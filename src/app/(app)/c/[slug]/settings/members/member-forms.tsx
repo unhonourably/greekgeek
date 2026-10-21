@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button, Checkbox, Field, Input, Notice, Select, Textarea } from "@/components/ui";
-import { FormMessage, SubmitButton } from "@/components/forms";
+import { ConfirmSubmit, FormMessage, SubmitButton } from "@/components/forms";
 import type { ActionState } from "@/lib/action-state";
 
 type Action = (state: ActionState, formData: FormData) => Promise<ActionState>;
@@ -180,6 +180,23 @@ export function MemberEditForm({ action, memberClass, status, disabled }: { acti
       </Field>
       <div className="flex justify-end">
         <SubmitButton disabled={disabled} pendingLabel="Saving">Save changes</SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+export function RemoveMemberForm({ action, name }: { action: Action; name: string }) {
+  const [state, formAction] = useActionState(action, {});
+  return (
+    <form action={formAction} className="space-y-3" noValidate>
+      <FormMessage state={state} />
+      <Field label="Reason" htmlFor="remove-reason" error={state.fieldErrors?.reason} hint="The member is notified, and the reason is kept on the membership record.">
+        <Input id="remove-reason" name="reason" maxLength={300} />
+      </Field>
+      <div className="flex justify-end">
+        <ConfirmSubmit message={`Remove ${name} from the chapter? They lose access to chats, housing, and officer roles.`} variant="danger" size="md">
+          Remove from chapter
+        </ConfirmSubmit>
       </div>
     </form>
   );

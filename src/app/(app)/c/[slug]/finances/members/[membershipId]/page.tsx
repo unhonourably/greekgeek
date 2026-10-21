@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
-import { Badge, Card, CardBody, CardHeader, Money, PageHeader, Stat, StatGrid, Table, Td, Th, Tr } from "@/components/ui";
+import { Badge, Card, CardBody, CardHeader, Money, Notice, PageHeader, Stat, StatGrid, Table, Td, Th, Tr } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { MEMBER_CLASS_LABEL, type MemberClass } from "@/lib/permissions";
 import { LEDGER_KIND_LABEL } from "@/lib/ledger";
-import { issueCredit, recordOfflinePayment, voidMemberAssessment } from "../../actions";
-import { CreditForm, OfflinePaymentForm, VoidForm } from "../../finance-forms";
+import { chargeMember, issueCredit, recordOfflinePayment, voidMemberAssessment } from "../../actions";
+import { AddChargeForm, CreditForm, OfflinePaymentForm, VoidForm } from "../../finance-forms";
 
 export const metadata: Metadata = { title: "Member account" };
 
@@ -24,7 +24,7 @@ export default async function MemberAccount({ params }: PageProps<"/c/[slug]/fin
     .eq("chapter_id", chapter.id)
     .maybeSingle();
   if (!m) notFound();
-  const [{ data: balance }, { data: charges }, { data: entries }, { data: plans }] = await Promise.all([
+  const [{ data: balance }, { data: charges }, { data: entries }, { data: plans }, { data: sent }, { data: billed }] = await Promise.all([
     supabase.rpc("member_balance", { p_membership: m.id }),
     supabase.from("member_assessment_balances").select("id, title, amount_cents, outstanding_cents, processing_cents, status, due_date").eq("membership_id", m.id).order("due_date", { ascending: false }),
     supabase
@@ -35,6 +35,8 @@ export default async function MemberAccount({ params }: PageProps<"/c/[slug]/fin
       .order("id", { ascending: true })
       .limit(500),
     supabase.from("installment_plans").select("id, status, total_cents, member_assessment_id, installments(sequence, amount_cents, due_date, status)").eq("chapter_id", chapter.id).eq("status", "active"),
+    supabase.from("dues_assessments").select("id, title, default_amount_cents, due_date, status, issued_at").eq("chapter_id", chapter.id).in("status", ["issued", "closed"]).order("issued_at", { ascending: false }).limit(100),
+    supabase.from("member_assessments").select("assessment_id").eq("membership_id", m.id),
   ]);
   const profile = m.user as unknown as { full_name: string; display_name: string } | null;
   const name = profile?.full_name || profile?.display_name || "Member";
@@ -47,6 +49,22 @@ export default async function MemberAccount({ params }: PageProps<"/c/[slug]/fin
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: chapter.timezone }).format(new Date());
   const fmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: chapter.timezone });
   const dueFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
+  const billedIds = new Set((billed ?? []).map((b) => b.assessment_id));
+  const joined = m.joined_at ? new Date(m.joined_at).getTime() : 0;
+  const unbilled = (sent ?? [])
+    .filter((a) => !billedIds.has(a.id))
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      amount: Number(a.default_amount_cents),
+      dueDate: a.due_date,
+      status: a.status,
+      sentAfterJoin: a.issued_at ? new Date(a.issued_at).getTime() >= joined : true,
+    }))
+    .sort((a, b) => Number(a.sentAfterJoin) - Number(b.sentAfterJoin));
+  const missedBeforeJoin = unbilled.filter((a) => !a.sentAfterJoin);
+  const defaultDue = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+  const canCharge = can("finance.manage") && (m.status === "active" || m.status === "inactive");
   const statement = ((entries ?? []) as unknown as Array<{ id: number; amount_cents: number; created_at: string; txn: { kind: string; description: string; occurred_at: string; payment_id: string | null } | null }>).reduce<
     Array<{ id: number; amount_cents: number; created_at: string; txn: { kind: string; description: string; occurred_at: string; payment_id: string | null } | null; running: number }>
   >((acc, e) => [...acc, { ...e, running: (acc.at(-1)?.running ?? 0) + Number(e.amount_cents) }], []);
@@ -63,6 +81,12 @@ export default async function MemberAccount({ params }: PageProps<"/c/[slug]/fin
         <Stat label="Clearing" value={<Money cents={Number(bal?.processing_cents ?? 0)} />} />
         <Stat label="Next due" value={bal?.next_due_date ? dueFmt.format(new Date(bal.next_due_date)) : "Nothing due"} />
       </StatGrid>
+      {canCharge && missedBeforeJoin.length > 0 ? (
+        <Notice tone="warning" title={`Joined after ${missedBeforeJoin.length === 1 ? "a charge" : `${missedBeforeJoin.length} charges`} went out`} className="mb-6">
+          {missedBeforeJoin.slice(0, 3).map((a) => a.title).join(", ")}
+          {missedBeforeJoin.length > 3 ? ` and ${missedBeforeJoin.length - 3} more` : ""}. Use Add a charge to bill them, prorated if you like.
+        </Notice>
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           <Card>
@@ -142,6 +166,14 @@ export default async function MemberAccount({ params }: PageProps<"/c/[slug]/fin
         </div>
         {can("finance.manage") ? (
           <div className="space-y-6">
+            {canCharge ? (
+              <Card>
+                <CardHeader title="Add a charge" description="Bill this member for an assessment that already went out." />
+                <CardBody>
+                  <AddChargeForm action={chargeMember.bind(null, chapter.slug, m.id)} options={unbilled} today={today} defaultDue={defaultDue} />
+                </CardBody>
+              </Card>
+            ) : null}
             <Card>
               <CardHeader title="Record offline payment" description="Cash, check, or another app." />
               <CardBody>

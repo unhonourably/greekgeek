@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, CircleDot, Search } from "lucide-react";
-import { Badge, ButtonLink, Card, CardBody, CardHeader, DefinitionList, Input, Notice, PageHeader, buttonClass, cx } from "@/components/ui";
+import { Check, CircleDot } from "lucide-react";
+import { Badge, ButtonLink, Card, CardBody, CardHeader, DefinitionList, Notice, PageHeader, cx } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/forms";
-import { requireUser } from "@/lib/auth";
+import { getStaffRole, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { searchUniversities } from "@/lib/universities";
 import {
   APPLICATION_KIND_LABEL,
   APPLICATION_STATUS,
@@ -30,6 +29,7 @@ import {
   withdrawApplication,
 } from "../actions";
 import { ApplicantForm, ChapterForm, EvidenceUpload, RespondForm, SubmitForm, VerificationForm } from "./step-forms";
+import { UniversityPicker } from "./university-picker";
 
 export const metadata: Metadata = { title: "Chapter application" };
 
@@ -66,7 +66,8 @@ const STEPS = ["About you", "Chapter", "Verification", "Review"];
 export default async function ApplicationPage({ params, searchParams }: PageProps<"/onboarding/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const user = await requireUser(`/onboarding/${id}`);
+  const [user, staffRole] = await Promise.all([requireUser(`/onboarding/${id}`), getStaffRole()]);
+  const admin = staffRole === "admin";
   const supabase = await createClient();
   const { data } = await supabase
     .from("chapter_applications")
@@ -113,7 +114,7 @@ export default async function ApplicationPage({ params, searchParams }: PageProp
           const done = n < app.current_step;
           const content = (
             <>
-              <span className={cx("h-1 rounded-full", n === step ? "bg-accent" : done ? "bg-accent/40" : "bg-line")} />
+              <span className={cx("h-1 rounded-full transition-colors duration-300 ease-out", n === step ? "bg-accent" : done ? "bg-accent/40" : "bg-line")} />
               <span className={cx("mt-2 flex items-center gap-1.5 text-[13px]", n === step ? "font-medium text-ink" : "text-ink-3")}>
                 {done ? <Check className="size-3.5" aria-hidden /> : null}
                 {label}
@@ -132,7 +133,7 @@ export default async function ApplicationPage({ params, searchParams }: PageProp
         })}
       </ol>
 
-      <Card>
+      <Card key={`${step}-${typeof sp.uni === "string" ? sp.uni : ""}`} className="step-in">
         {step === 1 ? (
           <>
             <CardHeader title="About you" description="The person submitting this application becomes the chapter's first administrator." />
@@ -147,9 +148,12 @@ export default async function ApplicationPage({ params, searchParams }: PageProp
         {step === 2 ? <ChapterStep app={app} query={typeof sp.q === "string" ? sp.q : ""} uni={typeof sp.uni === "string" ? sp.uni : ""} changing={sp.change === "1" || typeof sp.q === "string"} /> : null}
         {step === 3 ? (
           <>
-            <CardHeader title="Verification" description="Choose how a reviewer can confirm that you hold an officer position in this chapter." />
+            <CardHeader
+              title="Verification"
+              description={admin ? "Platform administrators skip verification. The chapter is created when you submit." : "Choose how a reviewer can confirm that you hold an officer position in this chapter."}
+            />
             <CardBody>
-              {app.university?.email_domains?.length ? (
+              {app.university?.email_domains?.length && !admin ? (
                 <p className="mb-4 text-[13px] text-ink-3">
                   School email is available for {app.university.name}: {app.university.email_domains.map((d) => `@${d}`).join(", ")}.
                 </p>
@@ -161,6 +165,7 @@ export default async function ApplicationPage({ params, searchParams }: PageProp
                 upload={uploadEvidence.bind(null, app.id)}
                 emailVerified={Boolean(app.institutional_email_verified_at)}
                 evidence={evidence}
+                skipped={admin}
                 defaults={{
                   verification_method: app.verification_method ?? "",
                   institutional_email: app.institutional_email ?? "",
@@ -174,7 +179,7 @@ export default async function ApplicationPage({ params, searchParams }: PageProp
             </CardBody>
           </>
         ) : null}
-        {step === 4 ? <ReviewStep app={app} evidenceCount={evidence.length} /> : null}
+        {step === 4 ? <ReviewStep app={app} evidenceCount={evidence.length} admin={admin} /> : null}
       </Card>
 
       <form action={withdrawApplication.bind(null, app.id)} className="mt-6 flex justify-end">
@@ -202,9 +207,8 @@ async function ReviewerRequest({ applicationId }: { applicationId: string }) {
 async function ChapterStep({ app, query, uni, changing }: { app: Application; query: string; uni: string; changing: boolean }) {
   const supabase = await createClient();
   const selected = uni || app.university_id || (app.proposed_university_name ? "other" : "");
-  const [{ data: selectedUni }, { data: matches }, { data: orgs }] = await Promise.all([
-    selected && selected !== "other" ? supabase.from("universities").select("id, name, city, state").eq("id", selected).maybeSingle() : Promise.resolve({ data: null }),
-    searchUniversities(supabase, query).then((data) => ({ data })),
+  const [{ data: selectedUni }, { data: orgs }] = await Promise.all([
+    selected && selected !== "other" ? supabase.from("universities").select("id, name, city, state, email_domains").eq("id", selected).maybeSingle() : Promise.resolve({ data: null }),
     app.kind === "new_chapter" ? supabase.from("national_organizations").select("name").order("name").limit(500) : Promise.resolve({ data: [] as Array<{ name: string }> }),
   ]);
   let chapters: Array<{ id: string; name: string; status: string }> = [];
@@ -227,41 +231,18 @@ async function ChapterStep({ app, query, uni, changing }: { app: Application; qu
           <h3 className="text-[13px] font-medium text-ink">University</h3>
           {selected && !changing ? (
             <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-line bg-canvas px-3 py-2.5">
-              <span className="text-sm text-ink">
-                {selected === "other" ? "My university is not listed" : selectedUni ? `${selectedUni.name}${selectedUni.city ? ` · ${selectedUni.city}, ${selectedUni.state ?? ""}` : ""}` : "Selected university"}
+              <span className="min-w-0">
+                <span className="block text-sm text-ink">
+                  {selected === "other" ? "My university is not listed" : selectedUni ? `${selectedUni.name}${selectedUni.city ? ` · ${selectedUni.city}, ${selectedUni.state ?? ""}` : ""}` : "Selected university"}
+                </span>
+                {selectedUni?.email_domains?.length ? (
+                  <span className="block truncate text-[12px] text-ink-3">School email: {(selectedUni.email_domains as string[]).map((d) => `@${d}`).join(", ")}</span>
+                ) : null}
               </span>
               <Link href={`/onboarding/${app.id}?step=2&change=1`} className="text-[13px] text-accent hover:underline">Change</Link>
             </div>
           ) : null}
-          {showPicker ? (
-            <div className="mt-2 space-y-2">
-              <form method="get" className="flex gap-2" role="search">
-                <input type="hidden" name="step" value="2" />
-                {changing ? <input type="hidden" name="change" value="1" /> : null}
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
-                  <Input name="q" defaultValue={query} placeholder="Search by university name" className="pl-9" aria-label="Search universities" autoFocus />
-                </div>
-                <button type="submit" className={buttonClass("secondary")}>Search</button>
-              </form>
-              {query.trim().length >= 2 ? (
-                <ul className="divide-y divide-line rounded-md border border-line">
-                  {(matches ?? []).map((u) => (
-                    <li key={u.id}>
-                      <Link href={`/onboarding/${app.id}?step=2&uni=${u.id}`} className="flex items-center justify-between px-3 py-2 text-sm hover:bg-canvas">
-                        <span className="text-ink">{u.name}</span>
-                        <span className="text-[12px] text-ink-3">{[u.city, u.state].filter(Boolean).join(", ")}</span>
-                      </Link>
-                    </li>
-                  ))}
-                  {(matches ?? []).length === 0 ? <li className="px-3 py-2 text-sm text-ink-3">No universities match.</li> : null}
-                </ul>
-              ) : null}
-              {app.kind === "new_chapter" ? (
-                <Link href={`/onboarding/${app.id}?step=2&uni=other`} className="inline-block text-[13px] text-accent hover:underline">My university is not listed</Link>
-              ) : null}
-            </div>
-          ) : null}
+          {showPicker ? <UniversityPicker applicationId={app.id} allowOther={app.kind === "new_chapter"} initialQuery={query} /> : null}
         </section>
         {selected && !changing ? (
           <ChapterForm
@@ -284,7 +265,7 @@ async function ChapterStep({ app, query, uni, changing }: { app: Application; qu
   );
 }
 
-async function ReviewStep({ app, evidenceCount }: { app: Application; evidenceCount: number }) {
+async function ReviewStep({ app, evidenceCount, admin }: { app: Application; evidenceCount: number; admin: boolean }) {
   const supabase = await createClient();
   let duplicates: Array<{ type: string; name: string; status: string }> = [];
   if (app.university_id && app.kind === "new_chapter") {
@@ -301,16 +282,21 @@ async function ReviewStep({ app, evidenceCount }: { app: Application; evidenceCo
   if (!app.university_id && !app.proposed_university_name) problems.push("Choose a university.");
   if (app.kind === "new_chapter" && !app.organization_name) problems.push("Enter your organization.");
   if (app.kind !== "new_chapter" && !app.existing_chapter_id) problems.push("Choose the chapter you are claiming.");
-  if (!method) problems.push("Choose a verification method.");
-  if (method === "institutional_email" && !app.institutional_email_verified_at) problems.push("Confirm your school email.");
-  if (method === "officer_documentation" && evidenceCount === 0) problems.push("Upload at least one document.");
-  if (method === "national_organization" && !app.national_contact_email) problems.push("Add a national organization contact.");
-  if (method === "university_fsl" && !app.fsl_contact_email) problems.push("Add an FSL office contact.");
+  if (!admin) {
+    if (!method) problems.push("Choose a verification method.");
+    if (method === "institutional_email" && !app.institutional_email_verified_at) problems.push("Confirm your school email.");
+    if (method === "officer_documentation" && evidenceCount === 0) problems.push("Upload at least one document.");
+    if (method === "national_organization" && !app.national_contact_email) problems.push("Add a national organization contact.");
+    if (method === "university_fsl" && !app.fsl_contact_email) problems.push("Add an FSL office contact.");
+  }
 
   const role = INTENDED_ROLES.find((r) => r.value === app.intended_role)?.label ?? "Not set";
   return (
     <>
-      <CardHeader title="Review and submit" description="A reviewer checks every application. You will be notified by email when a decision is made." />
+      <CardHeader
+        title="Review and submit"
+        description={admin ? "Submitting creates the chapter immediately. Verification is skipped for platform administrators." : "A reviewer checks every application. You will be notified by email when a decision is made."}
+      />
       <CardBody className="space-y-5">
         <DefinitionList
           items={[
@@ -351,7 +337,7 @@ async function ReviewStep({ app, evidenceCount }: { app: Application; evidenceCo
             </ul>
           </Notice>
         ) : (
-          <SubmitForm action={submitApplication.bind(null, app.id)} needsResponse={app.status === "info_requested"} />
+          <SubmitForm action={submitApplication.bind(null, app.id)} needsResponse={app.status === "info_requested"} confirmLabel={admin ? "Create chapter" : undefined} />
         )}
       </CardBody>
     </>

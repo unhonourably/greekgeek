@@ -13,7 +13,7 @@ describe("supabase auth email templates", () => {
     for (const [key, type] of Object.entries(types)) {
       const t = templates.find((x) => x.key === key)!;
       const href = `href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=${type}"`;
-      expect(t.html.split(href)).toHaveLength(3);
+      expect(t.html.split(href)).toHaveLength(2);
       expect(t.html).not.toContain("__supabase_action__");
       expect(t.html).not.toContain('href="#"');
     }

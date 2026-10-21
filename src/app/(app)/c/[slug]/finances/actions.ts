@@ -174,6 +174,29 @@ const creditSchema = z.object({
   request_key: z.uuid(),
 });
 
+const memberChargeSchema = z.object({
+  assessment: z.uuid("Pick an assessment"),
+  amount: dollars("an amount"),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a due date"),
+});
+
+export async function chargeMember(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  await requireChapter(slug, "finance.manage");
+  const raw = Object.fromEntries(formData) as Record<string, string>;
+  const parsed = memberChargeSchema.safeParse(raw);
+  if (!parsed.success) return { ...zodState(parsed.error), values: raw };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("charge_member_assessment", {
+    p_assessment: parsed.data.assessment,
+    p_membership: membershipId,
+    p_amount_cents: parsed.data.amount,
+    p_due_date: parsed.data.due_date,
+  });
+  if (error) return { error: dbErrorMessage(error), values: raw };
+  revalidatePath(`/c/${slug}`, "layout");
+  return { ok: true, message: "Charge added. The member was notified." };
+}
+
 export async function issueCredit(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   await requireChapter(slug, "finance.manage");
   const raw = Object.fromEntries(formData) as Record<string, string>;

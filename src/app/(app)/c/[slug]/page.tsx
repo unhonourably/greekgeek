@@ -7,8 +7,12 @@ import { requireChapter } from "@/lib/auth";
 import { getReadiness, subscriptionInGoodStanding } from "@/lib/readiness";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents } from "@/lib/money";
+import { plainText } from "@/lib/rich-text";
+import { loadChapterSetup } from "@/lib/chapter-setup";
+import { viewerIsPledge } from "@/lib/pledge";
 import { MemberTiles, NewMembersCard, PlaceCard, RsvpBadge, TodoCard, type MemberOverview } from "./member-panel";
 import { OfficerDashboard, OfficerDashboardSkeleton } from "./officer-dashboard";
+import { SetupProgress } from "./setup/progress";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -20,8 +24,10 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
   const supabase = await createClient();
   const now = new Date();
 
-  const [readiness, { data: balance }, { data: overview }, { data: events }, { data: announcements }] = await Promise.all([
+  const [readiness, setup, pledge, { data: balance }, { data: overview }, { data: events }, { data: announcements }] = await Promise.all([
     can("chapter.manage") || can("payments.configure") || can("finance.view") ? getReadiness(chapter.id) : Promise.resolve(null),
+    can("chapter.manage") ? loadChapterSetup(chapter, can) : Promise.resolve(null),
+    viewerIsPledge(chapter.id),
     supabase.rpc("member_balance", { p_membership: membership.id }),
     supabase.rpc("member_overview", { p_chapter: chapter.id }),
     supabase
@@ -59,7 +65,9 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
         actions={chapter.greek_letters ? <span className="font-serif text-2xl text-ink-3">{chapter.greek_letters}</span> : null}
       />
 
-      {setupIncomplete ? (
+      {setup ? <SetupProgress steps={setup} base={base} /> : null}
+
+      {setupIncomplete && !can("chapter.manage") ? (
         <Notice
           tone="info"
           title="Finish setting up dues collection"
@@ -77,7 +85,7 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
       {officer ? (
         <div className="mb-6">
           <Suspense fallback={<OfficerDashboardSkeleton />}>
-            <OfficerDashboard chapterId={chapter.id} base={base} recruitment={Boolean(chapter.modules?.recruitment) && (can("recruitment.view") || can("recruitment.manage"))} finance={can("finance.view")} />
+            <OfficerDashboard chapterId={chapter.id} base={base} recruitment={Boolean(chapter.modules?.recruitment) && can("recruitment.view")} finance={can("finance.view")} manageMembers={can("members.manage")} manageRoles={can("roles.manage")} />
           </Suspense>
         </div>
       ) : null}
@@ -134,7 +142,7 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
                         {a.title}
                         {a.requires_ack ? <Badge tone="warning">Acknowledge</Badge> : null}
                       </span>
-                      <span className="mt-0.5 line-clamp-2 block text-[13px] text-ink-2">{a.body}</span>
+                      <span className="mt-0.5 line-clamp-2 block text-[13px] text-ink-2">{plainText(a.body)}</span>
                     </Link>
                   </li>
                 ))}
@@ -144,7 +152,7 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
         </div>
 
         <div className="space-y-6">
-          {o ? <TodoCard o={o} base={base} modules={modules} balanceDue={balanceDue} /> : null}
+          {o ? <TodoCard o={o} base={base} modules={pledge ? { ...modules, housing: false } : modules} balanceDue={balanceDue} canRecruit={can("recruitment.view")} /> : null}
           <Card>
             <CardHeader title="My dues" />
             <CardBody>

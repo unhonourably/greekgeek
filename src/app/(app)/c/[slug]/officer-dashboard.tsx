@@ -30,7 +30,7 @@ const CLASSES = [
 
 const monthFmt = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
 
-export async function OfficerDashboard({ chapterId, base, recruitment, finance }: { chapterId: string; base: string; recruitment: boolean; finance: boolean }) {
+export async function OfficerDashboard({ chapterId, base, recruitment, finance, manageMembers, manageRoles }: { chapterId: string; base: string; recruitment: boolean; finance: boolean; manageMembers: boolean; manageRoles: boolean }) {
   const supabase = await createClient();
   const now = new Date();
   const [{ data, error }, month] = await Promise.all([
@@ -63,9 +63,9 @@ export async function OfficerDashboard({ chapterId, base, recruitment, finance }
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Tile icon={Users} label="Active members" value={active} hint={Number(m.joined_30d) ? `+${m.joined_30d} in the last 30 days` : "No new members this month"} href={`${base}/directory`} />
-        <Tile icon={Sprout} label="New members" value={Number(m.by_class.new_member ?? 0)} hint={`${Number(m.by_class.associate ?? 0)} associates · ${Number(m.by_class.alumni ?? 0)} alumni`} href={`${base}/settings/members`} />
-        <Tile icon={ShieldCheck} label="Officers" value={Number(m.officers)} hint={active ? `${Math.round((Number(m.officers) / active) * 100)}% of the chapter` : undefined} href={`${base}/settings/roles`} />
-        <Tile icon={MailPlus} label="Pending invites" value={Number(m.pending_invitations)} hint={Number(m.inactive) ? `${m.inactive} inactive members` : "Everyone invited has joined"} href={`${base}/settings/members`} tone={Number(m.pending_invitations) > 0 ? "accent" : undefined} />
+        <Tile icon={Sprout} label="New members" value={Number(m.by_class.new_member ?? 0)} hint={`${Number(m.by_class.associate ?? 0)} associates · ${Number(m.by_class.alumni ?? 0)} alumni`} href={`${base}/directory?class=new_member`} />
+        <Tile icon={ShieldCheck} label="Officers" value={Number(m.officers)} hint={active ? `${Math.round((Number(m.officers) / active) * 100)}% of the chapter` : undefined} href={manageRoles ? `${base}/settings/roles` : `${base}/directory`} />
+        <Tile icon={MailPlus} label="Pending invites" value={Number(m.pending_invitations)} hint={Number(m.inactive) ? `${m.inactive} inactive members` : "Everyone invited has joined"} href={manageMembers ? `${base}/settings/members` : null} tone={Number(m.pending_invitations) > 0 ? "accent" : undefined} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">

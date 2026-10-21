@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { dbErrorMessage } from "@/lib/errors";
+import { serverEnv } from "@/lib/env";
+import { deliver, emailPlatformAdmins } from "@/lib/product-email";
 import type { ActionState } from "@/lib/action-state";
 
 const MODULES = ["recruitment", "philanthropy", "housing", "standards", "academics"] as const;
@@ -80,4 +82,33 @@ export async function transferOwnership(slug: string, _: ActionState, formData: 
   if (error) return { error: dbErrorMessage(error) };
   revalidatePath(`/c/${slug}`, "layout");
   return { ok: true, message: "Administrator access granted." };
+}
+
+export async function requestClosure(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  const { chapter, user } = await requireChapter(slug, "chapter.manage");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (reason.length < 20) return { fieldErrors: { reason: "Explain the closure in at least 20 characters" }, values: { reason } };
+  if (reason.length > 2000) return { fieldErrors: { reason: "Keep this under 2000 characters" }, values: { reason } };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("request_chapter_closure", { p_chapter: chapter.id, p_reason: reason });
+  if (error) return { error: dbErrorMessage(error), values: { reason } };
+  const label = [chapter.organization_name, chapter.designation].filter(Boolean).join(" ");
+  const appUrl = serverEnv.appUrl();
+  await deliver({
+    to: user.email,
+    subject: `Closure request sent for ${label}`,
+    heading: "Closure request sent",
+    preheader: `${label} will stay open until a platform administrator accepts the request.`,
+    paragraphs: [`We sent your request to close ${label}. The chapter stays open, and members keep access, until a platform administrator accepts it.`],
+    note: "You can leave this as it is. Nothing closes until the request is accepted.",
+  });
+  await emailPlatformAdmins({
+    subject: `Closure request for ${label}`,
+    heading: "A chapter asked to close",
+    preheader: `${label} is waiting for a platform administrator to accept or decline closure.`,
+    paragraphs: [`${label} asked to close. Reason: ${reason}`],
+    action: { label: "Review closures", url: `${appUrl}/admin/closures` },
+  });
+  revalidatePath(`/c/${slug}/settings`);
+  return { ok: true, message: "Request sent. A platform administrator has to accept it before the chapter closes." };
 }

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { forbidden, notFound } from "next/navigation";
 import { Card, CardBody, Notice, PageHeader, Stat, StatGrid, TextLink } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -10,7 +10,7 @@ import { CheckInDisplay } from "./check-in-display";
 export default async function CheckInPage({ params }: PageProps<"/c/[slug]/events/[eventId]/check-in">) {
   const { slug, eventId } = await params;
   const { chapter, can } = await requireChapter(slug);
-  if (!can("attendance.manage") && !can("events.manage")) notFound();
+  if (!can("attendance.manage") && !can("events.manage")) forbidden();
   const supabase = await createClient();
   const { data } = await supabase.from("events").select(EVENT_COLUMNS).eq("id", eventId).eq("chapter_id", chapter.id).maybeSingle();
   if (!data) notFound();

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime, formatTime, requestTime } from "@/lib/format";
 import { ATTENDANCE_LABEL, ATTENDANCE_TONE, EVENT_CATEGORY_LABEL, EVENT_COLUMNS, RSVP_LABEL, checkInOpen, type AttendanceStatus, type EventRow, type RsvpStatus } from "@/lib/events";
 import { MEMBER_CLASS_LABEL, type MemberClass } from "@/lib/permissions";
+import { PhotoStrip, RichContent } from "@/components/rich-view";
 import { cancelEvent, rsvp } from "../actions";
 
 type Rsvp = { user_id: string; status: RsvpStatus; profile: { display_name: string | null; full_name: string | null; avatar_path: string | null } | null };
@@ -88,7 +89,12 @@ export default async function EventPage({ params, searchParams }: PageProps<"/c/
                 {e.attendance_required ? <Badge tone="warning">Required for {requiredFor}</Badge> : null}
                 {e.visibility === "officers" ? <Badge tone="info">Officers only</Badge> : null}
               </div>
-              {e.description ? <p className="whitespace-pre-wrap border-t border-line pt-4 text-sm leading-relaxed text-ink-2">{e.description}</p> : null}
+              {e.description || (e.image_paths ?? []).length ? (
+                <div className="space-y-4 border-t border-line pt-4">
+                  {e.description ? <RichContent value={e.description} /> : null}
+                  <PhotoStrip paths={e.image_paths ?? []} />
+                </div>
+              ) : null}
             </CardBody>
           </Card>
           <Card>

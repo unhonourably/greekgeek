@@ -156,7 +156,7 @@ export default async function ProspectPage({ params, searchParams }: PageProps<"
               </CardBody>
             </Card>
           ) : null}
-          {stage?.outcome === "joined" && can("members.manage") && p.email ? (
+          {stage?.outcome === "joined" && (can("members.manage") || can("recruitment.manage")) && p.email ? (
             <Card>
               <CardHeader title="Invite to the chapter" description={`Sends an invitation to ${p.email} as a new member.`} />
               <CardBody>

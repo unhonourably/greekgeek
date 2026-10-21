@@ -53,7 +53,7 @@ describe("chapter roles", () => {
     await expectDenied(save(member.userId, null, "Sneaky", []), /not authorized/);
     const roleId = (await db.pg.query<{ id: string }>("select id from public.roles where chapter_id = $1 and key = 'treasurer'", [chapter.chapterId])).rows[0].id;
     await db.pg.query("insert into public.role_permissions (role_id, permission_key) values ($1, 'roles.manage') on conflict do nothing", [roleId]);
-    await expectDenied(save(treasurer.userId, null, "Sneaky", ["audit.view"]), /permissions you hold/);
+    await expectDenied(save(treasurer.userId, null, "Sneaky", ["standards.view"]), /permissions you hold/);
     await expectDenied(save(treasurer.userId, secretaryRole, "Secretary", ["events.manage"]), /permissions you hold/);
     const ok = await save(treasurer.userId, null, "Finance committee", ["finance.view"]);
     expect(await permsOf(ok)).toEqual(["finance.view"]);

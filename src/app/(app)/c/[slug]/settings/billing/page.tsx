@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { forbidden } from "next/navigation";
 import { Check, ExternalLink } from "lucide-react";
 import { ChapterCosts } from "@/components/chapter-costs";
 import { Badge, Card, CardBody, CardHeader, Money, Notice, Table, Td, Th, TextLink, Tr, cx } from "@/components/ui";
@@ -49,7 +49,7 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
   const sp = await searchParams;
   const ctx = await requireChapter(slug);
   const { chapter, can } = ctx;
-  if (!can("chapter.manage") && !can("payments.configure") && !can("finance.view")) notFound();
+  if (!can("chapter.manage") && !can("payments.configure") && !can("finance.view")) forbidden();
 
   const supabase = await createClient();
   const [readiness, pricing, terms, profile, { data: agreement }, { data: subscription }, { data: invoices }, { data: account }] = await Promise.all([

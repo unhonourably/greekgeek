@@ -21,11 +21,13 @@ describe("email template", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 
-  it("renders the action button and a copyable fallback link", () => {
+  it("renders one white action button", () => {
     const html = renderEmailHtml({ ...base, action: { label: "Accept invitation", url: "https://greekgeek.org/invite/abc?x=1&y=2" } });
     expect(html).toContain("Accept invitation");
-    expect(html.match(/href="https:\/\/greekgeek\.org\/invite\/abc\?x=1&amp;y=2"/g)).toHaveLength(2);
-    expect(html).toContain("#e0a535");
+    expect(html.match(/href="https:\/\/greekgeek\.org\/invite\/abc\?x=1&amp;y=2"/g)).toHaveLength(1);
+    expect(html).toContain("background:#ffffff");
+    expect(html).toContain("background:#111111");
+    expect(html).toContain("&copy; 2026 greek geek. all rights reserved.");
   });
 
   it("refuses non-http action links", () => {
@@ -34,11 +36,12 @@ describe("email template", () => {
     expect(html).not.toContain(">Go</a>");
   });
 
-  it("uses the hosted logo only for public https apps", () => {
-    expect(renderEmailHtml(base)).toContain('src="https://greekgeek.org/greekgeek-wordmark.png"');
-    const local = renderEmailHtml({ ...base, appUrl: "http://localhost:3001" });
-    expect(local).not.toContain("<img");
-    expect(local).toContain("&epsilon;&epsilon;");
+  it("keeps the same card on any app url and shows a verification code", () => {
+    const html = renderEmailHtml({ ...base, appUrl: "http://localhost:3001", code: "123456" });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("letter-spacing:8px");
+    expect(html).toContain("123456");
+    expect(html).toContain("background:#000000");
   });
 
   it("puts the preheader in a hidden preview block and omits empty sections", () => {

@@ -94,3 +94,18 @@ export function TransferForm({ action, members, slug }: { action: Action; member
     </form>
   );
 }
+
+export function ClosureForm({ action }: { action: Action }) {
+  const [state, formAction] = useActionState(action, {});
+  return (
+    <form action={formAction} className="space-y-4" noValidate>
+      <FormMessage state={state} />
+      <Field label="Why is the chapter closing?" htmlFor="reason" error={state.fieldErrors?.reason} hint="At least 20 characters. A platform administrator has to accept this before anything closes.">
+        <Textarea id="reason" name="reason" maxLength={2000} defaultValue={String(state.values?.reason ?? "")} />
+      </Field>
+      <div className="flex justify-end">
+        <SubmitButton variant="danger" pendingLabel="Sending">Request closure</SubmitButton>
+      </div>
+    </form>
+  );
+}

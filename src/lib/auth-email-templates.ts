@@ -85,7 +85,8 @@ const TEMPLATES: AuthTemplate[] = [
     content: {
       preheader: "Your verification code is {{ .Token }}.",
       heading: "Confirm it's you",
-      paragraphs: ["Enter this code to continue:", "{{ .Token }}"],
+      paragraphs: ["Enter this code to continue."],
+      code: "{{ .Token }}",
       note: "The code expires shortly. If you didn't request it, change your password.",
     },
   },
@@ -100,13 +101,6 @@ export function authEmailTemplates(): { key: string; file: string; subject: stri
       action: t.type && actionLabel ? { label: actionLabel, url: PLACEHOLDER } : null,
     });
     const filled = t.type ? html.split(PLACEHOLDER).join(confirmLink(t.type)) : html;
-    return { key: t.key, file: t.file, subject: t.subject, html: t.key === "reauthentication" ? codeStyle(filled) : filled };
+    return { key: t.key, file: t.file, subject: t.subject, html: filled };
   });
-}
-
-function codeStyle(html: string): string {
-  return html.replace(
-    /<td style="([^"]*)">\{\{ \.Token \}\}<\/td>/,
-    (_m, style: string) => `<td style="${style}font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:30px;line-height:38px;letter-spacing:8px;color:#e0a535;font-weight:600;">{{ .Token }}</td>`,
-  );
 }
