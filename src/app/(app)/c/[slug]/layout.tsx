@@ -1,5 +1,7 @@
 import { ChapterMain } from "@/components/chapter-main";
 import { ChapterNav, type NavGroup } from "@/components/chapter-nav";
+import { ChapterUnreadProvider } from "@/components/chapter-unread";
+import { serverEnv } from "@/lib/env";
 import { Notice } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { getReadiness } from "@/lib/readiness";
@@ -50,6 +52,14 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
   }
 
   return (
+    <ChapterUnreadProvider
+      initial={Number(unread ?? 0)}
+      chapterId={chapter.id}
+      chatBase={`${base}/chat`}
+      meId={ctx.user.id}
+      supabaseUrl={serverEnv.supabaseUrl()}
+      supabaseKey={serverEnv.supabasePublishableKey()}
+    >
     <div className="flex flex-1">
       <aside className="hidden w-60 shrink-0 border-r border-line bg-surface lg:block">
         <div className="sticky top-14 max-h-[calc(100vh-3.5rem)] overflow-y-auto px-3 py-5">
@@ -79,5 +89,6 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
         <ChapterMain base={base}>{children}</ChapterMain>
       </div>
     </div>
+    </ChapterUnreadProvider>
   );
 }

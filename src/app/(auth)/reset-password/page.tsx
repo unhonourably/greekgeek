@@ -1,17 +1,16 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { ResetPasswordForm } from "../auth-forms";
+import { AuthHeading } from "../auth-ui";
 
 export const metadata: Metadata = { title: "Choose a new password" };
 
 export default async function ResetPasswordPage() {
-  await requireUser("/reset-password");
+  const user = await requireUser("/reset-password");
   return (
     <>
-      <h1 className="text-xl font-semibold tracking-tight">Choose a new password</h1>
-      <div className="mt-6">
-        <ResetPasswordForm />
-      </div>
+      <AuthHeading title="Choose a new password" description={<>For <span className="text-ink">{user.email}</span>. You&apos;ll stay signed in after saving.</>} />
+      <ResetPasswordForm />
     </>
   );
 }

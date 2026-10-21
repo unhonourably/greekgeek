@@ -1,20 +1,25 @@
 import Link from "next/link";
-import { Bell, ChevronDown, LogOut, Shield, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Shield, UserRound } from "lucide-react";
 import { Wordmark } from "@/components/brand";
+import { NotificationsMenu } from "@/components/notifications-menu";
 import { signOut } from "@/app/(auth)/actions";
 import { initials } from "@/lib/names";
 
 export function AppHeader({
   name,
   email,
+  userId,
   unread,
   isStaff,
+  realtime,
   context,
 }: {
   name: string;
   email: string;
+  userId: string;
   unread: number;
   isStaff: boolean;
+  realtime: { url: string; key: string };
   context?: React.ReactNode;
 }) {
   return (
@@ -29,14 +34,7 @@ export function AppHeader({
               Platform admin
             </Link>
           ) : null}
-          <Link href="/notifications" className="relative rounded-md p-2 text-ink-2 hover:bg-subtle hover:text-ink" aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}>
-            <Bell className="size-[18px]" aria-hidden />
-            {unread > 0 ? (
-              <span className="absolute right-1 top-1 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] font-semibold leading-4 text-on-accent tnum">
-                {unread > 99 ? "99+" : unread}
-              </span>
-            ) : null}
-          </Link>
+          <NotificationsMenu initialUnread={unread} meId={userId} supabaseUrl={realtime.url} supabaseKey={realtime.key} />
           <details className="group relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md py-1 pl-1 pr-2 hover:bg-subtle [&::-webkit-details-marker]:hidden">
               <span className="grid size-7 place-items-center rounded-full bg-accent-soft text-[11px] font-semibold text-accent">{initials(name || email)}</span>

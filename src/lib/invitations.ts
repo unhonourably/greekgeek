@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { brand } from "@/config/brand";
 import { hmac, randomToken } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email";
+import { renderEmailHtml } from "@/lib/email-template";
 import { serverEnv } from "@/lib/env";
 import type { MemberClass } from "@/lib/permissions";
 
@@ -32,10 +33,23 @@ export async function createAndSendInvitation(
   if (error) return { ok: false, error };
   const link = `${serverEnv.appUrl()}/invite/${token}`;
   const chapterName = [chapter.organization_name, chapter.designation].filter(Boolean).join(", ");
+  const firstName = input.fullName ? input.fullName.split(" ")[0] : null;
   const result = await sendEmail({
     to: input.email,
     subject: `${inviterName} invited you to ${chapterName}`,
-    text: `${input.fullName ? `Hi ${input.fullName.split(" ")[0]},\n\n` : ""}${inviterName} invited you to join ${chapterName} on ${brand.name}.\n\nAccept the invitation: ${link}\n\nThe link expires in 14 days. Sign in or create an account with ${input.email} to accept.`,
+    text: `${firstName ? `Hi ${firstName},\n\n` : ""}${inviterName} invited you to join ${chapterName} on ${brand.name}.\n\nAccept the invitation: ${link}\n\nThe link expires in 14 days. Sign in or create an account with ${input.email} to accept.`,
+    html: renderEmailHtml({
+      appUrl: serverEnv.appUrl(),
+      preheader: `${inviterName} invited you to join ${chapterName}. The link expires in 14 days.`,
+      heading: `You're invited to ${chapterName}`,
+      greeting: firstName ? `Hi ${firstName},` : null,
+      paragraphs: [
+        `${inviterName} invited you to join ${chapterName} on ${brand.name}, where the chapter handles dues, events, messages, and announcements.`,
+        `Sign in or create an account with ${input.email} to accept.`,
+      ],
+      action: { label: "Accept invitation", url: link },
+      note: "This invitation expires in 14 days. If you weren't expecting it, you can ignore this email.",
+    }),
   });
   return { ok: true, devLink: !result.delivered && !serverEnv.isProduction() ? link : null, link, delivered: result.delivered };
 }

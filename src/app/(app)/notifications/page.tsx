@@ -1,30 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bell, CheckCheck, CreditCard, FileCheck2, Megaphone, MessageSquare, CalendarDays, UserPlus, ClipboardList, type LucideIcon } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import { Card, EmptyState, PageHeader, buttonClass, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
 import { listNotifications } from "@/lib/notifications";
 import { formatRelative } from "@/lib/format";
+import { notificationIcon } from "@/lib/notification-kinds";
 import { markAllRead, openNotification } from "./actions";
 
 export const metadata: Metadata = { title: "Notifications" };
-
-const ICON: Record<string, LucideIcon> = {
-  dues_assessed: CreditCard,
-  dues_reminder: CreditCard,
-  payment_receipt: CreditCard,
-  payment_failed: CreditCard,
-  payment_refunded: CreditCard,
-  announcement: Megaphone,
-  chat_mention: MessageSquare,
-  chat_message: MessageSquare,
-  event_reminder: CalendarDays,
-  recruitment_followup: UserPlus,
-  verification_update: FileCheck2,
-  policy_update: FileCheck2,
-  task_assigned: ClipboardList,
-};
 
 export default async function NotificationsPage({ searchParams }: PageProps<"/notifications">) {
   await requireUser("/notifications");
@@ -61,7 +46,7 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
         ) : (
           <ul className="divide-y divide-line">
             {items.map((n) => {
-              const Icon = ICON[n.kind] ?? Bell;
+              const Icon = notificationIcon(n.kind);
               return (
                 <li key={n.id}>
                   <form action={openNotification.bind(null, n.id)}>

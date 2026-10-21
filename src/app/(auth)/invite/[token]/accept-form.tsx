@@ -75,7 +75,7 @@ export function AcceptForm({ action, recruiters }: { action: (state: ActionState
           </div>
         </fieldset>
       ) : null}
-      <SubmitButton className="w-full" pendingLabel="Joining" disabled={!ready}>Accept invitation</SubmitButton>
+      <SubmitButton className="h-11! w-full rounded-lg! text-[15px]!" pendingLabel="Joining" disabled={!ready}>Accept invitation</SubmitButton>
       {!ready ? <p className="text-center text-[12px] text-ink-3">Choose who recruited you to continue.</p> : null}
     </form>
   );

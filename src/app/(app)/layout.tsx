@@ -3,7 +3,7 @@ import { AppHeader } from "@/components/app-header";
 import { Notice } from "@/components/ui";
 import { Wordmark } from "@/components/brand";
 import { getMyProfile, getSessionUser, getStaffRole } from "@/lib/auth";
-import { isSupabaseConfigured } from "@/lib/env";
+import { isSupabaseConfigured, serverEnv } from "@/lib/env";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 
 export const instant = false;
@@ -24,7 +24,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const [profile, staffRole, unread] = await Promise.all([getMyProfile(), getStaffRole(), getUnreadNotificationCount()]);
   return (
     <div className="flex min-h-full flex-1 flex-col bg-canvas">
-      <AppHeader name={profile?.full_name || profile?.display_name || ""} email={user.email} unread={unread} isStaff={Boolean(staffRole)} />
+      <AppHeader
+        name={profile?.full_name || profile?.display_name || ""}
+        email={user.email}
+        userId={user.id}
+        unread={unread}
+        isStaff={Boolean(staffRole)}
+        realtime={{ url: serverEnv.supabaseUrl(), key: serverEnv.supabasePublishableKey() }}
+      />
       <div className="flex flex-1 flex-col">{children}</div>
     </div>
   );

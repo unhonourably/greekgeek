@@ -7,6 +7,7 @@ import { requireChapter } from "@/lib/auth";
 import { getReadiness, subscriptionInGoodStanding } from "@/lib/readiness";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents } from "@/lib/money";
+import { MemberTiles, NewMembersCard, PlaceCard, RsvpBadge, TodoCard, type MemberOverview } from "./member-panel";
 import { OfficerDashboard, OfficerDashboardSkeleton } from "./officer-dashboard";
 
 export const metadata: Metadata = { title: "Overview" };
@@ -19,9 +20,10 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
   const supabase = await createClient();
   const now = new Date();
 
-  const [readiness, { data: balance }, { data: events }, { data: announcements }] = await Promise.all([
+  const [readiness, { data: balance }, { data: overview }, { data: events }, { data: announcements }] = await Promise.all([
     can("chapter.manage") || can("payments.configure") || can("finance.view") ? getReadiness(chapter.id) : Promise.resolve(null),
     supabase.rpc("member_balance", { p_membership: membership.id }),
+    supabase.rpc("member_overview", { p_chapter: chapter.id }),
     supabase
       .from("events")
       .select("id, title, starts_at, location, attendance_required, timezone")
@@ -45,6 +47,9 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
   const dueFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const setupIncomplete = readiness && !readiness.can_collect;
   const officer = can("announcements.officers") || can("chapter.manage") || can("members.manage");
+  const o = overview as MemberOverview | null;
+  const modules = chapter.modules ?? {};
+  const balanceDue = Number(bal?.balance_cents ?? 0) > 0;
 
   return (
     <>
@@ -77,6 +82,13 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
         </div>
       ) : null}
 
+      {o ? (
+        <section aria-label="Your standing" className="fade-up mb-6 space-y-3">
+          <h2 className="text-[13px] font-medium uppercase tracking-wide text-ink-3">Your standing</h2>
+          <MemberTiles o={o} base={base} userId={ctx.user.id} modules={modules} />
+        </section>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
@@ -97,7 +109,10 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
                           {e.location ? ` · ${e.location}` : ""}
                         </span>
                       </span>
-                      {e.attendance_required ? <Badge tone="gold">Required</Badge> : null}
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {e.attendance_required ? <Badge tone="gold">Required</Badge> : null}
+                        {o ? <RsvpBadge status={o.rsvps[e.id]} /> : null}
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -129,6 +144,7 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
         </div>
 
         <div className="space-y-6">
+          {o ? <TodoCard o={o} base={base} modules={modules} balanceDue={balanceDue} /> : null}
           <Card>
             <CardHeader title="My dues" />
             <CardBody>
@@ -137,10 +153,12 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
               {bal?.next_due_date ? <p className="mt-1 text-[13px] text-ink-2">Next due {dueFmt.format(new Date(bal.next_due_date))}</p> : null}
               {Number(bal?.processing_cents ?? 0) > 0 ? <p className="mt-1 text-[13px] text-info">{formatCents(Number(bal?.processing_cents))} clearing</p> : null}
               <ButtonLink href={`${base}/dues`} variant="secondary" size="sm" className="mt-4">
-                {Number(bal?.balance_cents ?? 0) > 0 ? "View and pay" : "View history"}
+                {balanceDue ? "View and pay" : "View history"}
               </ButtonLink>
             </CardBody>
           </Card>
+          {o ? <PlaceCard o={o} base={base} /> : null}
+          {o ? <NewMembersCard o={o} base={base} /> : null}
         </div>
       </div>
     </>

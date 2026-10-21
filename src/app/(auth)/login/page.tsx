@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Notice } from "@/components/ui";
 import { SignInForm } from "../auth-forms";
+import { AuthFooter, AuthHeading, authLink } from "../auth-ui";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -10,15 +12,12 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const error = typeof sp.error === "string" ? sp.error : null;
   return (
     <>
-      <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-      <p className="mt-1 text-sm text-ink-2">Welcome back.</p>
-      {error ? <p className="mt-4 rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger">That link is invalid or has expired.</p> : null}
-      <div className="mt-6">
-        <SignInForm next={next} />
-      </div>
-      <p className="mt-6 text-center text-sm text-ink-2">
-        New here? <Link href={`/signup?next=${encodeURIComponent(next)}`} className="text-accent hover:underline">Create an account</Link>
-      </p>
+      <AuthHeading title="Welcome back" description="Sign in to your chapter." />
+      {error ? <Notice tone="danger" className="mb-5">That link is invalid or has expired. Sign in, or request a new link.</Notice> : null}
+      <SignInForm next={next} />
+      <AuthFooter>
+        New to GreekGeek? <Link href={`/signup?next=${encodeURIComponent(next)}`} className={authLink}>Create an account</Link>
+      </AuthFooter>
     </>
   );
 }

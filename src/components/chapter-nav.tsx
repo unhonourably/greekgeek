@@ -27,6 +27,7 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import { useChapterUnread } from "@/components/chapter-unread";
 import { cx } from "@/components/ui";
 
 const ICONS = {
@@ -60,6 +61,7 @@ export type NavGroup = { label?: string; items: NavItem[] };
 
 export function ChapterNav({ groups }: { groups: NavGroup[] }) {
   const pathname = usePathname();
+  const liveUnread = useChapterUnread();
   const activeHref = groups
     .flatMap((g) => g.items)
     .filter((item) => (item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`)))
@@ -73,6 +75,7 @@ export function ChapterNav({ groups }: { groups: NavGroup[] }) {
             {group.items.map((item) => {
               const Icon = ICONS[item.key];
               const active = item.href === activeHref;
+              const badge = item.key === "chat" && liveUnread !== null ? liveUnread : item.badge;
               return (
                 <li key={item.href}>
                   <Link
@@ -85,7 +88,7 @@ export function ChapterNav({ groups }: { groups: NavGroup[] }) {
                   >
                     <NavIcon icon={Icon} active={active} />
                     <span className="flex-1 truncate">{item.label}</span>
-                    {item.badge ? <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-[18px] text-on-accent tnum">{item.badge > 99 ? "99+" : item.badge}</span> : null}
+                    {badge ? <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-[18px] text-on-accent tnum">{badge > 99 ? "99+" : badge}</span> : null}
                     {item.tag ? <span className="rounded-full border border-warning/40 bg-warning/10 px-1.5 text-[11px] font-medium leading-[18px] text-warning">{item.tag}</span> : null}
                   </Link>
                 </li>

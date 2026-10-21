@@ -1,7 +1,7 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
 
-export type OutgoingEmail = { to: string; subject: string; text: string };
+export type OutgoingEmail = { to: string; subject: string; text: string; html?: string };
 
 export class EmailNotConfiguredError extends Error {
   constructor() {
@@ -20,7 +20,7 @@ export async function sendEmail(message: OutgoingEmail): Promise<{ id: string | 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: serverEnv.emailFrom(), to: [message.to], subject: message.subject, text: message.text }),
+    body: JSON.stringify({ from: serverEnv.emailFrom(), to: [message.to], subject: message.subject, text: message.text, ...(message.html ? { html: message.html } : {}) }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Email provider responded ${response.status}`);

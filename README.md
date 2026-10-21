@@ -184,13 +184,14 @@ In production, create two endpoints in the Stripe dashboard, both with the URL `
    - `checkout.session.completed`
    - `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
    - `invoice.paid`, `invoice.payment_failed`, `invoice.voided`
+   - `application_fee.refunded`
 2. **Connected accounts** events, for dues. Put its secret in `STRIPE_CONNECT_WEBHOOK_SECRET`. Events:
    - Checkout: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`
    - Payment intents: `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`
    - Charges and refunds: `charge.succeeded`, `charge.updated`, `charge.refunded`, `charge.refund.updated`, `refund.created`, `refund.updated`, `refund.failed`
    - Disputes: `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_withdrawn`, `charge.dispute.funds_reinstated`
    - Payouts: `payout.created`, `payout.updated`, `payout.paid`, `payout.failed`, `payout.canceled`
-   - Platform fees and accounts: `application_fee.refunded`, `account.updated`
+   - Accounts: `account.updated`
 
 Optionally, add an event destination for v2 `v2.core.account[...]` updates that points at `/api/stripe/account-events`, with its secret in `STRIPE_ACCOUNT_EVENTS_SECRET`.
 

@@ -11,6 +11,10 @@ import { signOut } from "../../actions";
 import { acceptInvitation } from "./actions";
 import { AcceptForm, type RecruiterOption } from "./accept-form";
 import { createClient } from "@/lib/supabase/server";
+import { MailX } from "lucide-react";
+import { AuthHeading, AuthStatus } from "../../auth-ui";
+
+const BIG = "h-11! w-full rounded-lg! text-[15px]!";
 
 export const metadata: Metadata = { title: "Chapter invitation", robots: { index: false } };
 
@@ -38,17 +42,21 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
 
   return (
     <>
-      <p className="text-sm text-ink-3">You are invited to join</p>
-      <h1 className="mt-1 font-serif text-2xl font-semibold tracking-tight">{chapterName || "a chapter"}</h1>
-      {chapter?.university ? <p className="mt-1 text-sm text-ink-2">{chapter.university.name}</p> : null}
-      <p className="mt-4 text-sm text-ink-2">
-        As {MEMBER_CLASS_LABEL[inv.member_class as MemberClass].toLowerCase() === "active" ? "an active member" : `a ${MEMBER_CLASS_LABEL[inv.member_class as MemberClass].toLowerCase()}`}. Sent to {user && emailMatches ? (inv.email as string) : maskEmail(inv.email as string)}.
-      </p>
-      <div className="mt-6 space-y-4">
+      <AuthHeading
+        eyebrow="You're invited to join"
+        title={chapterName || "a chapter"}
+        description={
+          <>
+            {chapter?.university ? <span className="block text-ink">{chapter.university.name}</span> : null}
+            As {MEMBER_CLASS_LABEL[inv.member_class as MemberClass].toLowerCase() === "active" ? "an active member" : `a ${MEMBER_CLASS_LABEL[inv.member_class as MemberClass].toLowerCase()}`}. Sent to {user && emailMatches ? (inv.email as string) : maskEmail(inv.email as string)}.
+          </>
+        }
+      />
+      <div className="space-y-4">
         {inv.status === "accepted" ? (
           <>
             <Notice tone="info">This invitation has already been accepted.</Notice>
-            <ButtonLink href="/home" className="w-full">Go to your chapters</ButtonLink>
+            <ButtonLink href="/home" className={BIG}>Go to your chapters</ButtonLink>
           </>
         ) : inv.status === "revoked" ? (
           <Notice tone="warning">This invitation was withdrawn. Ask a chapter officer for a new one.</Notice>
@@ -57,8 +65,8 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
         ) : !user ? (
           <>
             <p className="text-sm text-ink-2">Create an account or sign in with the email address the invitation was sent to.</p>
-            <ButtonLink href={`/signup?next=${encodeURIComponent(next)}`} className="w-full">Create an account</ButtonLink>
-            <ButtonLink href={`/login?next=${encodeURIComponent(next)}`} variant="secondary" className="w-full">Sign in</ButtonLink>
+            <ButtonLink href={`/signup?next=${encodeURIComponent(next)}`} className={BIG}>Create an account</ButtonLink>
+            <ButtonLink href={`/login?next=${encodeURIComponent(next)}`} variant="secondary" className={BIG}>Sign in</ButtonLink>
           </>
         ) : !emailMatches ? (
           <>
@@ -67,7 +75,7 @@ export default async function InvitePage({ params }: PageProps<"/invite/[token]"
             </Notice>
             <form action={signOut}>
               <input type="hidden" name="next" value={next} />
-              <SubmitButton variant="secondary" className="w-full">Sign out and switch accounts</SubmitButton>
+              <SubmitButton variant="secondary" className={BIG}>Sign out and switch accounts</SubmitButton>
             </form>
           </>
         ) : (
@@ -87,9 +95,8 @@ async function recruiterOptions(token: string): Promise<RecruiterOption[] | null
 
 function Invalid() {
   return (
-    <>
-      <h1 className="text-xl font-semibold tracking-tight">Invitation not found</h1>
-      <p className="mt-2 text-sm text-ink-2">The link may be incomplete. Open it again from your email, or ask a chapter officer to resend it.</p>
-    </>
+    <AuthStatus icon={MailX} tone="danger" title="Invitation not found">
+      The link may be incomplete. Open it again from your email, or ask a chapter officer to resend it.
+    </AuthStatus>
   );
 }

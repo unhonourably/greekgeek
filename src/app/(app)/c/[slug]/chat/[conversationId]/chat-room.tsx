@@ -35,6 +35,7 @@ import type { RealtimeChannel, RealtimePostgresInsertPayload, RealtimePostgresUp
 import { Avatar } from "@/components/people";
 import { Button, Notice, Select, Textarea, cx } from "@/components/ui";
 import { createBrowserSupabase } from "@/lib/supabase/client";
+import { CHAT_READ_EVENT } from "@/components/chapter-unread";
 import { dbErrorMessage } from "@/lib/errors";
 import { useNow } from "@/lib/clock";
 import type { ChatMember, ChatMessage } from "@/lib/chat";
@@ -179,15 +180,19 @@ export function ChatRoom({
   }, [scrollToBottom]);
 
   const markRead = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const markReadNow = useCallback(async () => {
+    const { error } = await supabase.rpc("mark_conversation_read", { p_conversation: conversation.id });
+    if (!error) window.dispatchEvent(new CustomEvent(CHAT_READ_EVENT, { detail: conversation.id }));
+  }, [supabase, conversation.id]);
   const scheduleMarkRead = useCallback(() => {
     if (markRead.current) clearTimeout(markRead.current);
     markRead.current = setTimeout(() => {
-      if (document.visibilityState === "visible") void supabase.rpc("mark_conversation_read", { p_conversation: conversation.id });
+      if (document.visibilityState === "visible") void markReadNow();
     }, 800);
-  }, [supabase, conversation.id]);
+  }, [markReadNow]);
 
   useEffect(() => {
-    void supabase.rpc("mark_conversation_read", { p_conversation: conversation.id });
+    void markReadNow();
     const onVisible = () => {
       if (document.visibilityState === "visible") scheduleMarkRead();
     };
@@ -195,7 +200,7 @@ export function ChatRoom({
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [supabase, conversation.id, scheduleMarkRead]);
+  }, [markReadNow, scheduleMarkRead]);
 
   const ensureMember = useCallback(
     async (userId: string) => {

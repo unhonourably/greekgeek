@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase/client";
+import { CHAT_READ_EVENT } from "@/components/chapter-unread";
 import { BellOff, Compass, Flag, Hash, Lock, Megaphone, Search, SquarePen, Users } from "lucide-react";
 import { cx } from "@/components/ui";
 import { initials } from "@/lib/names";
@@ -74,19 +75,32 @@ export function ChatSidebar({
   const [source, setSource] = useState(initial);
   const [live, setLive] = useState<Record<string, { bump: number; preview: string; at: string; mine: boolean }>>({});
   const [q, setQ] = useState("");
+  const [read, setRead] = useState<ReadonlySet<string>>(() => new Set());
   if (source !== initial) {
     setSource(initial);
     setLive({});
+    setRead(new Set());
   }
+  useEffect(() => {
+    const onRead = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (!id) return;
+      setRead((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+      setLive((prev) => (prev[id]?.bump ? { ...prev, [id]: { ...prev[id], bump: 0 } } : prev));
+    };
+    window.addEventListener(CHAT_READ_EVENT, onRead);
+    return () => window.removeEventListener(CHAT_READ_EVENT, onRead);
+  }, []);
   const conversations = useMemo(
     () =>
       initial
         .map((c) => {
           const l = live[c.id];
-          return l ? { ...c, unread: c.unread + l.bump, preview: l.preview, lastAt: l.at, previewMine: l.mine } : c;
+          const baseUnread = read.has(c.id) ? 0 : c.unread;
+          return l ? { ...c, unread: baseUnread + l.bump, preview: l.preview, lastAt: l.at, previewMine: l.mine } : { ...c, unread: baseUnread };
         })
         .filter((c) => !q.trim() || c.title.toLowerCase().includes(q.trim().toLowerCase())),
-    [initial, live, q],
+    [initial, live, read, q],
   );
   const pathRef = useRef(pathname);
   const known = useRef(new Set(initial.map((c) => c.id)));

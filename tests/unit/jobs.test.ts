@@ -43,5 +43,18 @@ describe("notification emails", () => {
     expect(local.text).toContain("Manage email preferences: https://app.example.com/account#notifications");
     const offsite = jobs.notificationEmail({ title: "Hi", body: null, link: "//evil.example" }, "https://app.example.com");
     expect(offsite.text).not.toContain("evil");
+    expect(offsite.html).not.toContain("evil");
+    expect(offsite.html).not.toContain("If the button doesn't work");
+  });
+
+  it("renders branded html with a context-aware button", () => {
+    const dues = jobs.notificationEmail({ title: "Spring dues is past due", body: "Outstanding balance: $200.00.", link: "/c/alpha/dues" }, "https://app.example.com");
+    expect(dues.html).toContain("View and pay");
+    expect(dues.html).toContain('href="https://app.example.com/c/alpha/dues"');
+    expect(dues.html).toContain("Outstanding balance: $200.00.");
+    expect(dues.html).toContain("app.example.com/account#notifications");
+    const chat = jobs.notificationEmail({ title: "New message", body: "<b>hi</b>", link: "/c/alpha/chat/123" }, "https://app.example.com");
+    expect(chat.html).toContain("Open conversation");
+    expect(chat.html).not.toContain("<b>hi</b>");
   });
 });

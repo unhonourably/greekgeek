@@ -1,6 +1,8 @@
 import "server-only";
 import { safeEqual } from "@/lib/crypto";
+import { brand } from "@/config/brand";
 import { sendEmail } from "@/lib/email";
+import { renderEmailHtml } from "@/lib/email-template";
 import { serverEnv } from "@/lib/env";
 import { adminRpc } from "@/lib/supabase/admin";
 
@@ -17,10 +19,28 @@ export function isAuthorizedCron(header: string | null): boolean {
 
 type Claimed = { id: string; email: string | null; title: string; body: string | null; link: string | null };
 
-export function notificationEmail(n: Pick<Claimed, "title" | "body" | "link">, appUrl: string): { subject: string; text: string } {
+export function notificationEmail(n: Pick<Claimed, "title" | "body" | "link">, appUrl: string): { subject: string; text: string; html: string } {
   const link = n.link && n.link.startsWith("/") && !n.link.startsWith("//") ? `${appUrl}${n.link}` : null;
-  const parts = [n.title, n.body, link ? `Open: ${link}` : null, `Manage email preferences: ${appUrl}/account#notifications`];
-  return { subject: n.title, text: parts.filter(Boolean).join("\n\n") };
+  const prefs = `${appUrl}/account#notifications`;
+  const parts = [n.title, n.body, link ? `Open: ${link}` : null, `Manage email preferences: ${prefs}`];
+  const html = renderEmailHtml({
+    appUrl,
+    preheader: n.body ?? n.title,
+    heading: n.title,
+    paragraphs: n.body ? [n.body] : [],
+    action: link ? { label: actionLabel(n.link ?? ""), url: link } : null,
+    footer: `You're getting this because of your notification settings. Change them at ${prefs.replace(/^https?:\/\//, "")}`,
+  });
+  return { subject: n.title, text: parts.filter(Boolean).join("\n\n"), html };
+}
+
+function actionLabel(path: string): string {
+  if (/\/(dues|billing)(\/|$)/.test(path)) return "View and pay";
+  if (/\/chat(\/|$)/.test(path)) return "Open conversation";
+  if (/\/events(\/|$)/.test(path)) return "View event";
+  if (/\/announcements(\/|$)/.test(path)) return "Read announcement";
+  if (/\/recruitment(\/|$)/.test(path)) return "Open prospect";
+  return `Open in ${brand.name}`;
 }
 
 async function sendNotificationEmails(): Promise<Record<string, number>> {
