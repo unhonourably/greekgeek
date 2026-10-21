@@ -1,3 +1,4 @@
+import { BugReport } from "@/components/bug-report";
 import { ChapterNav, type NavGroup } from "@/components/chapter-nav";
 import { requireStaff, type StaffRole } from "@/lib/auth";
 
@@ -30,13 +31,18 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   }
   return (
     <div className="flex flex-1">
-      <aside className="hidden w-60 shrink-0 border-r border-line bg-surface lg:block">
-        <div className="sticky top-14 px-3 py-5">
-          <div className="mb-5 px-3">
-            <p className="text-sm font-semibold text-ink">Platform admin</p>
-            <p className="text-[12px] text-ink-3">Signed in as {ROLE_LABEL[role].toLowerCase()}</p>
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface lg:flex">
+        <div className="sticky top-14 flex h-[calc(100vh-3.5rem)] flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
+            <div className="mb-5 px-3">
+              <p className="text-sm font-semibold text-ink">Platform admin</p>
+              <p className="text-[12px] text-ink-3">Signed in as {ROLE_LABEL[role].toLowerCase()}</p>
+            </div>
+            <ChapterNav groups={groups} />
           </div>
-          <ChapterNav groups={groups} />
+          <div className="shrink-0 border-t border-line px-3 py-3">
+            <BugReport />
+          </div>
         </div>
       </aside>
       <div className="min-w-0 flex-1">
@@ -46,6 +52,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
           </summary>
           <div className="px-2 pb-4">
             <ChapterNav groups={groups} />
+            <div className="mt-4 border-t border-line px-1 pt-3">
+              <BugReport />
+            </div>
           </div>
         </details>
         <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8">{children}</main>

@@ -1,7 +1,28 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/brand";
 import { ButtonLink } from "@/components/ui";
 import { brand } from "@/config/brand";
+import { getSessionUser } from "@/lib/auth";
+import { isSupabaseConfigured } from "@/lib/env";
+
+function SignInLink() {
+  return (
+    <Link href="/login" className="rounded-md px-3 py-2 text-ink-2 hover:text-ink">
+      Sign in
+    </Link>
+  );
+}
+
+async function AccountLink() {
+  const signedIn = isSupabaseConfigured() ? Boolean(await getSessionUser()) : false;
+  if (!signedIn) return <SignInLink />;
+  return (
+    <Link href="/home" className="rounded-md px-3 py-2 text-ink-2 hover:text-ink">
+      Your chapters
+    </Link>
+  );
+}
 
 export default function MarketingLayout({ children }: LayoutProps<"/">) {
   return (
@@ -16,9 +37,9 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
             <Link href="/pricing" className="rounded-md px-3 py-2 text-ink-2 hover:text-ink">
               Pricing
             </Link>
-            <Link href="/login" className="rounded-md px-3 py-2 text-ink-2 hover:text-ink">
-              Sign in
-            </Link>
+            <Suspense fallback={<SignInLink />}>
+              <AccountLink />
+            </Suspense>
             <ButtonLink href="/signup" size="sm" className="ml-2">
               Register a chapter
             </ButtonLink>

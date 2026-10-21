@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import { brand } from "@/config/brand";
+import { AuthSession } from "@/components/auth-session";
 import "./globals.css";
 
 const sans = Geist({ variable: "--font-app-sans", subsets: ["latin"] });
@@ -20,7 +21,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable} h-full`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthSession />
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,3 +1,4 @@
+import { BugReport } from "@/components/bug-report";
 import { ChapterMain } from "@/components/chapter-main";
 import { ChapterNav, type NavGroup } from "@/components/chapter-nav";
 import { ChapterUnreadProvider } from "@/components/chapter-unread";
@@ -63,13 +64,18 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
       supabaseKey={serverEnv.supabasePublishableKey()}
     >
     <div className="flex flex-1">
-      <aside className="hidden w-60 shrink-0 border-r border-line bg-surface lg:block">
-        <div className="sticky top-14 max-h-[calc(100vh-3.5rem)] overflow-y-auto px-3 py-5">
-          <div className="mb-5 px-3">
-            <p className="truncate text-sm font-semibold text-ink">{chapter.organization_name}</p>
-            <p className="truncate text-[12px] text-ink-3">{[chapter.designation, chapter.university?.short_name ?? chapter.university?.name].filter(Boolean).join(" · ")}</p>
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface lg:flex">
+        <div className="sticky top-14 flex h-[calc(100vh-3.5rem)] flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
+            <div className="mb-5 px-3">
+              <p className="truncate text-sm font-semibold text-ink">{chapter.organization_name}</p>
+              <p className="truncate text-[12px] text-ink-3">{[chapter.designation, chapter.university?.short_name ?? chapter.university?.name].filter(Boolean).join(" · ")}</p>
+            </div>
+            <ChapterNav groups={groups} />
           </div>
-          <ChapterNav groups={groups} />
+          <div className="shrink-0 border-t border-line px-3 py-3">
+            <BugReport />
+          </div>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
@@ -79,6 +85,9 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
           </summary>
           <div className="px-2 pb-4">
             <ChapterNav groups={groups} />
+            <div className="mt-4 border-t border-line px-1 pt-3">
+              <BugReport />
+            </div>
           </div>
         </details>
         {chapter.status === "suspended" ? (
