@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/brand";
+import { Avatar, personName } from "@/components/people";
 import { ButtonLink } from "@/components/ui";
 import { brand } from "@/config/brand";
-import { getSessionUser } from "@/lib/auth";
+import { getMyProfile } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/env";
 
 function SignInLink() {
@@ -15,11 +16,12 @@ function SignInLink() {
 }
 
 async function AccountLink() {
-  const signedIn = isSupabaseConfigured() ? Boolean(await getSessionUser()) : false;
-  if (!signedIn) return <SignInLink />;
+  const profile = isSupabaseConfigured() ? await getMyProfile() : null;
+  if (!profile) return <SignInLink />;
+  const name = personName(profile);
   return (
-    <Link href="/home" className="rounded-md px-3 py-2 text-ink-2 hover:text-ink">
-      Your chapters
+    <Link href="/home" aria-label={name} className="ml-1 inline-flex rounded-full outline-offset-2 hover:opacity-80">
+      <Avatar name={name} path={profile.avatar_path} size="sm" />
     </Link>
   );
 }
