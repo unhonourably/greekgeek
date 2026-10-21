@@ -11,6 +11,7 @@ import { membershipsWithPermission } from "@/lib/roles";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { ACTIVITY_KINDS, parseInterests } from "@/lib/recruitment";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState, setupLocked } from "@/lib/setup-access";
 
 const optional = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? v : null));
 
@@ -35,6 +36,8 @@ function fieldErrors(error: z.ZodError): ActionState {
 
 export async function saveProspect(slug: string, prospectId: string | null, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user, membership, can } = await requireChapter(slug, "recruitment.view");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = prospectSchema.safeParse(Object.fromEntries([...formData.entries()].filter(([, v]) => typeof v === "string")));
   if (!parsed.success) return fieldErrors(parsed.error);
   const { interests, follow_up, ...d } = parsed.data;
@@ -70,6 +73,7 @@ export async function saveProspect(slug: string, prospectId: string | null, _: A
 
 export async function moveProspect(slug: string, prospectId: string, formData: FormData): Promise<void> {
   const { chapter } = await requireChapter(slug, "recruitment.view");
+  if (await setupLocked(chapter.id)) return;
   const stage = String(formData.get("stage") ?? "");
   const supabase = await createClient();
   const { data, error } = await supabase.from("prospects").update({ stage_id: stage }).eq("id", prospectId).eq("chapter_id", chapter.id).select("id");
@@ -79,6 +83,7 @@ export async function moveProspect(slug: string, prospectId: string, formData: F
 
 export async function setProspectStatus(slug: string, prospectId: string, status: "active" | "archived"): Promise<void> {
   const { chapter } = await requireChapter(slug, "recruitment.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { error } = await supabase.from("prospects").update({ status }).eq("id", prospectId).eq("chapter_id", chapter.id);
   if (error) redirect(`/c/${slug}/recruitment/${prospectId}?error=${encodeURIComponent(error.code === "23505" ? "Another active prospect already uses this email." : dbErrorMessage(error))}`);
@@ -87,6 +92,8 @@ export async function setProspectStatus(slug: string, prospectId: string, status
 
 export async function addNote(slug: string, prospectId: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireChapter(slug, "recruitment.view");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const body = String(formData.get("body") ?? "").trim();
   if (!body) return { fieldErrors: { body: "Write a note" } };
   if (body.length > 4000) return { fieldErrors: { body: "Keep notes under 4,000 characters" } };
@@ -99,6 +106,8 @@ export async function addNote(slug: string, prospectId: string, _: ActionState, 
 
 export async function logActivity(slug: string, prospectId: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireChapter(slug, "recruitment.view");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const kind = z.enum(ACTIVITY_KINDS).safeParse(formData.get("kind"));
   if (!kind.success) return { fieldErrors: { kind: "Pick a type" } };
   const date = String(formData.get("date") ?? "");
@@ -119,6 +128,7 @@ export async function logActivity(slug: string, prospectId: string, _: ActionSta
 export async function inviteProspect(slug: string, prospectId: string): Promise<void> {
   const { chapter, can } = await requireChapter(slug);
   if (!can("members.manage") && !can("recruitment.manage")) forbidden();
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { data: p } = await supabase.from("prospects").select("full_name, email").eq("id", prospectId).eq("chapter_id", chapter.id).maybeSingle();
   const back = `/c/${slug}/recruitment/${prospectId}`;
@@ -131,6 +141,7 @@ export async function inviteProspect(slug: string, prospectId: string): Promise<
 
 export async function setupPipeline(slug: string): Promise<void> {
   const { chapter } = await requireChapter(slug, "recruitment.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   await supabase.rpc("ensure_recruitment_stages", { p_chapter: chapter.id });
   revalidatePath(`/c/${slug}/recruitment`, "layout");
@@ -144,6 +155,8 @@ const stageSchema = z.object({
 
 export async function saveStage(slug: string, stageId: string | null, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireChapter(slug, "recruitment.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = stageSchema.safeParse({ name: formData.get("name"), outcome: formData.get("outcome"), position: formData.get("position") });
   if (!parsed.success) return fieldErrors(parsed.error);
   const supabase = await createClient();
@@ -157,6 +170,7 @@ export async function saveStage(slug: string, stageId: string | null, _: ActionS
 
 export async function deleteStage(slug: string, stageId: string): Promise<void> {
   const { chapter } = await requireChapter(slug, "recruitment.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { error } = await supabase.from("recruitment_stages").delete().eq("id", stageId).eq("chapter_id", chapter.id);
   if (error) redirect(`/c/${slug}/recruitment/stages?error=${encodeURIComponent(error.code === "23503" ? "Stages that have ever held a prospect cannot be deleted. Rename it instead." : dbErrorMessage(error))}`);

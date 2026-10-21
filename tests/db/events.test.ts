@@ -46,6 +46,8 @@ describe("events and attendance", () => {
     await db.rpc("authenticated", alex.userId, "rsvp_event", { p_event: event, p_status: "going" });
     const closed = await createEvent({ startsInMin: 600, deadlineInMin: -5 });
     await expectDenied(db.rpc("authenticated", alex.userId, "rsvp_event", { p_event: closed, p_status: "going" }), /closed/);
+    const past = await createEvent({ startsInMin: -180, durationMin: 60 });
+    await expectDenied(db.rpc("authenticated", alex.userId, "rsvp_event", { p_event: past, p_status: "going" }), /ended/);
   });
 
   it("hides officer-only events from regular members", async () => {

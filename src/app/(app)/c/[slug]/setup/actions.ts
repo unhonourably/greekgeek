@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireChapter } from "@/lib/auth";
 import { isSkippableStep } from "@/lib/chapter-setup";
+import { setupLocked } from "@/lib/setup-access";
 import { createClient } from "@/lib/supabase/server";
 
 async function skippedList(chapterId: string): Promise<string[]> {
@@ -14,6 +15,7 @@ async function skippedList(chapterId: string): Promise<string[]> {
 export async function skipSetupStep(slug: string, step: string): Promise<void> {
   if (!isSkippableStep(step)) return;
   const { chapter } = await requireChapter(slug, "chapter.manage");
+  if (await setupLocked(chapter.id)) return;
   const current = await skippedList(chapter.id);
   if (current.includes(step)) return;
   const supabase = await createClient();
@@ -24,6 +26,7 @@ export async function skipSetupStep(slug: string, step: string): Promise<void> {
 export async function restoreSetupStep(slug: string, step: string): Promise<void> {
   if (!isSkippableStep(step)) return;
   const { chapter } = await requireChapter(slug, "chapter.manage");
+  if (await setupLocked(chapter.id)) return;
   const current = await skippedList(chapter.id);
   const supabase = await createClient();
   await supabase.from("chapters").update({ setup_skipped: current.filter((id) => id !== step) }).eq("id", chapter.id);

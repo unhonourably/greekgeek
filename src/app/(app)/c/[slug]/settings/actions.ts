@@ -8,6 +8,7 @@ import { dbErrorMessage } from "@/lib/errors";
 import { serverEnv } from "@/lib/env";
 import { deliver, emailPlatformAdmins } from "@/lib/product-email";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState } from "@/lib/setup-access";
 
 const MODULES = ["recruitment", "philanthropy", "housing", "standards", "academics"] as const;
 
@@ -29,6 +30,8 @@ const profileSchema = z.object({
 
 export async function updateChapterProfile(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireChapter(slug, "chapter.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = profileSchema.safeParse({
     greek_letters: formData.get("greek_letters") ?? undefined,
     description: formData.get("description") ?? undefined,
@@ -58,6 +61,8 @@ export async function updateChapterProfile(slug: string, _: ActionState, formDat
 
 export async function updateModules(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireChapter(slug, "chapter.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const modules = Object.fromEntries(MODULES.map((m) => [m, formData.get(m) === "on"]));
   const supabase = await createClient();
   const { error } = await supabase.from("chapters").update({ modules }).eq("id", chapter.id);
@@ -68,6 +73,8 @@ export async function updateModules(slug: string, _: ActionState, formData: Form
 
 export async function transferOwnership(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireChapter(slug, "chapter.ownership");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const to = String(formData.get("membership_id") ?? "");
   const confirmation = String(formData.get("confirmation") ?? "").trim();
   if (!z.uuid().safeParse(to).success) return { fieldErrors: { membership_id: "Choose a member" } };
@@ -86,6 +93,8 @@ export async function transferOwnership(slug: string, _: ActionState, formData: 
 
 export async function requestClosure(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireChapter(slug, "chapter.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const reason = String(formData.get("reason") ?? "").trim();
   if (reason.length < 20) return { fieldErrors: { reason: "Explain the closure in at least 20 characters" }, values: { reason } };
   if (reason.length > 2000) return { fieldErrors: { reason: "Keep this under 2000 characters" }, values: { reason } };

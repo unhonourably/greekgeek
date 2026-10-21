@@ -10,12 +10,15 @@ import { dbErrorMessage } from "@/lib/errors";
 import { createAndSendInvitation, parseMemberCsv } from "@/lib/invitations";
 import { rateLimit } from "@/lib/rate-limit";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState, setupLocked } from "@/lib/setup-access";
 import type { MemberClass } from "@/lib/permissions";
 
 const CLASSES = ["new_member", "active", "associate", "alumni"] as const;
 
 export async function inviteMember(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const ctx = await requireChapter(slug, "members.manage");
+  const blocked = await setupLockState(ctx.chapter.id);
+  if (blocked) return blocked;
   if (ctx.chapter.status !== "verified") return { error: "Only verified chapters can invite members." };
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const fullName = String(formData.get("full_name") ?? "").trim();
@@ -60,6 +63,8 @@ async function assignRoles(supabase: Awaited<ReturnType<typeof createClient>>, c
 
 export async function importMembers(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const ctx = await requireChapter(slug, "members.manage");
+  const blocked = await setupLockState(ctx.chapter.id);
+  if (blocked) return blocked;
   if (ctx.chapter.status !== "verified") return { error: "Only verified chapters can invite members." };
   const file = formData.get("file");
   let text = String(formData.get("csv") ?? "");
@@ -98,6 +103,7 @@ export async function importMembers(slug: string, _: ActionState, formData: Form
 
 export async function revokeInvitation(slug: string, invitationId: string): Promise<void> {
   const { chapter } = await requireChapter(slug, "members.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { error } = await supabase.from("chapter_invitations").update({ status: "revoked" }).eq("id", invitationId).eq("chapter_id", chapter.id).eq("status", "pending");
   if (error) throw new Error(dbErrorMessage(error));
@@ -105,7 +111,9 @@ export async function revokeInvitation(slug: string, invitationId: string): Prom
 }
 
 export async function removeMember(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireChapter(slug, "members.manage");
+  const { chapter } = await requireChapter(slug, "members.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const reason = String(formData.get("reason") ?? "").trim();
   if (reason.length < 3) return { fieldErrors: { reason: "Give a reason" } };
   const supabase = await createClient();
@@ -116,7 +124,9 @@ export async function removeMember(slug: string, membershipId: string, _: Action
 }
 
 export async function updateMember(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireChapter(slug, "members.manage");
+  const { chapter } = await requireChapter(slug, "members.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const memberClass = z.enum(CLASSES).safeParse(formData.get("member_class"));
   const status = z.enum(["active", "inactive", "suspended", "ended"]).safeParse(formData.get("status"));
   const reason = String(formData.get("reason") ?? "").trim();
@@ -131,6 +141,8 @@ export async function updateMember(slug: string, membershipId: string, _: Action
 
 export async function assignRole(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireChapter(slug, "roles.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const roleId = String(formData.get("role_id") ?? "");
   if (!z.uuid().safeParse(roleId).success) return { error: "Choose a role." };
   const supabase = await createClient();
@@ -142,6 +154,7 @@ export async function assignRole(slug: string, membershipId: string, _: ActionSt
 
 export async function endRole(slug: string, assignmentId: string): Promise<void> {
   const { chapter, user } = await requireChapter(slug, "roles.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { error } = await supabase
     .from("role_assignments")
@@ -154,7 +167,9 @@ export async function endRole(slug: string, assignmentId: string): Promise<void>
 }
 
 export async function setRecruiter(slug: string, membershipId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireChapter(slug, "members.manage");
+  const { chapter } = await requireChapter(slug, "members.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const raw = String(formData.get("recruiter") ?? "");
   const recruiter = z.uuid().safeParse(raw).success ? raw : null;
   const supabase = await createClient();

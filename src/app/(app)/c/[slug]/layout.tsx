@@ -7,6 +7,7 @@ import { Notice } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { getReadiness } from "@/lib/readiness";
 import { viewerIsPledge } from "@/lib/pledge";
+import { setupLocked } from "@/lib/setup-access";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ChapterLayout({ children, params }: LayoutProps<"/c/[slug]">) {
@@ -16,10 +17,11 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
   const base = `/c/${chapter.slug}`;
   const supabase = await createClient();
   const canSetupPayments = can("chapter.manage") || can("payments.configure");
-  const [{ data: unread }, readiness, pledge] = await Promise.all([
+  const [{ data: unread }, readiness, pledge, locked] = await Promise.all([
     supabase.rpc("chapter_unread_total", { p_chapter: chapter.id }),
     canSetupPayments ? getReadiness(chapter.id) : Promise.resolve(null),
     viewerIsPledge(chapter.id),
+    setupLocked(chapter.id),
   ]);
   const modules = chapter.modules ?? {};
 
@@ -97,7 +99,7 @@ export default async function ChapterLayout({ children, params }: LayoutProps<"/
             </Notice>
           </div>
         ) : null}
-        <ChapterMain base={base}>{children}</ChapterMain>
+        <ChapterMain base={base} setupLocked={locked}>{children}</ChapterMain>
       </div>
     </div>
     </ChapterUnreadProvider>

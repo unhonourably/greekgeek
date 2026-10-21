@@ -49,7 +49,7 @@ export default async function ChapterOverview({ params }: PageProps<"/c/[slug]">
   ]);
 
   const bal = balance as { balance_cents: number; processing_cents: number; next_due_date: string | null } | null;
-  const dateFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: chapter.timezone });
+  const dateFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: chapter.timezone, timeZoneName: "short" });
   const dueFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const setupIncomplete = readiness && !readiness.can_collect;
   const officer = can("announcements.officers") || can("chapter.manage") || can("members.manage");

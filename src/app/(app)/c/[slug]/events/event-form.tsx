@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { PhotoPicker, RichEditor } from "@/components/rich-content";
-import { Checkbox, Field, Input, Select } from "@/components/ui";
+import { Checkbox, Field, Input, Notice, Select } from "@/components/ui";
 import { FormMessage, SubmitButton } from "@/components/forms";
 import { EVENT_CATEGORIES, EVENT_CATEGORY_LABEL } from "@/lib/events";
 import { MEMBER_CLASS_LABEL } from "@/lib/permissions";
@@ -28,6 +28,10 @@ export type EventFormInitial = {
 export function EventForm({ action, initial, timezone, upload }: { action: (s: ActionState, f: FormData) => Promise<ActionState>; initial?: EventFormInitial; timezone: string; upload: (formData: FormData) => Promise<{ path?: string; error?: string }> }) {
   const [state, formAction] = useActionState(action, {});
   const [required, setRequired] = useState(initial?.attendance_required ?? false);
+  const [localZone, setLocalZone] = useState<string | null>(null);
+  useEffect(() => {
+    setLocalZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, []);
   const classes = new Set(initial?.required_classes ?? []);
   const e = state.fieldErrors ?? {};
   return (
@@ -59,7 +63,12 @@ export function EventForm({ action, initial, timezone, upload }: { action: (s: A
           <Input id="end" name="end" type="time" defaultValue={initial?.end} />
         </Field>
       </div>
-      <p className="-mt-2 text-[13px] text-ink-3">Times are in the chapter time zone, {timezone.replace(/_/g, " ")}.</p>
+      <p className="-mt-2 text-[13px] text-ink-3">Times are in the chapter time zone, {timezone.replaceAll("_", " ")}.</p>
+      {localZone && localZone !== timezone ? (
+        <Notice tone="warning" title="Your computer is in a different time zone">
+          This form saves {timezone.replaceAll("_", " ")} times. Your computer is on {localZone.replaceAll("_", " ")}, so the time you type is not the time on your clock.
+        </Notice>
+      ) : null}
       <Field label="Details" htmlFor="description" error={e.description} hint="Format the write-up, add links, and insert pictures in the text.">
         <RichEditor id="description" name="description" initial={initial?.description} upload={upload} />
       </Field>

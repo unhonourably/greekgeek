@@ -80,7 +80,7 @@ export default async function AttendancePage({ params }: PageProps<"/c/[slug]/ev
                     </span>
                   </Td>
                   <Td>{a ? <Badge tone={ATTENDANCE_TONE[a.status]}>{ATTENDANCE_LABEL[a.status]}</Badge> : <span className="text-[13px] text-ink-3">Not recorded</span>}</Td>
-                  <Td className="text-[13px] text-ink-3">{a ? `${a.method === "qr" ? "QR scan" : "Manual"} · ${formatTime(a.checked_in_at, chapter.timezone)}` : ""}</Td>
+                  <Td className="text-[13px] text-ink-3">{a ? `${a.method === "qr" ? "QR scan" : "Manual"} · ${formatTime(a.checked_in_at, chapter.timezone, true)}` : ""}</Td>
                   {canManage ? (
                     <Td align="right">
                       <AttendanceControl key={a?.status ?? "none"} action={recordAttendance.bind(null, slug, e.id, m.id)} current={a?.status ?? null} />

@@ -9,6 +9,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { formField, optionalText, requireModule } from "@/lib/modules";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState } from "@/lib/setup-access";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CATEGORIES = ["general", "risk", "housing", "finance", "standards", "bylaws"] as const;
@@ -30,6 +31,8 @@ const policySchema = z.object({
 
 export async function createPolicy(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireStandardsManager(slug);
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = policySchema.safeParse({
     title: formField(formData, "title"),
     category: formField(formData, "category"),
@@ -56,7 +59,9 @@ const revisionSchema = z.object({
 });
 
 export async function publishRevision(slug: string, policyId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireStandardsManager(slug);
+  const { chapter } = await requireStandardsManager(slug);
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = revisionSchema.safeParse({ body: formField(formData, "body"), summary: formField(formData, "summary") });
   if (!parsed.success) return zodState(parsed.error);
   const supabase = await createClient();
@@ -87,6 +92,8 @@ const trainingSchema = z.object({
 
 export async function createTraining(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user, can } = await requireModule(slug, "standards");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   if (!can("standards.manage")) return { error: "You do not have permission to do that." };
   const classes = MEMBER_CLASSES.filter((c) => formData.get(`class_${c}`) === "on");
   const parsed = trainingSchema.safeParse({ title: formField(formData, "title"), description: optionalText(formData, "description"), due_on: optionalText(formData, "due_on"), applies_to: classes });

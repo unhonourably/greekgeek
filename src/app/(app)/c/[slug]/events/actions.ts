@@ -9,12 +9,14 @@ import { adminRpc } from "@/lib/supabase/admin";
 import { dbErrorMessage } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
 import { serverEnv } from "@/lib/env";
+import { formatTime } from "@/lib/format";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import { checkInToken, verifyCheckInToken, CHECKIN_WINDOW_MS } from "@/lib/checkin";
 import { EVENT_CATEGORIES, type RsvpStatus } from "@/lib/events";
 import { parseImagePaths, richTextIsEmpty, sanitizeRichText } from "@/lib/rich-text";
 import { MEMBER_CLASS_LABEL } from "@/lib/permissions";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState, setupLocked } from "@/lib/setup-access";
 
 const schema = z.object({
   title: z.string().trim().min(2, "Use at least 2 characters").max(140),
@@ -33,6 +35,8 @@ const schema = z.object({
 
 export async function saveEvent(slug: string, eventId: string | null, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireChapter(slug, "events.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = schema.safeParse({
     title: formData.get("title"),
     description: formData.get("description") ?? undefined,
@@ -99,6 +103,7 @@ export async function saveEvent(slug: string, eventId: string | null, _: ActionS
 
 export async function cancelEvent(slug: string, eventId: string): Promise<void> {
   const { chapter } = await requireChapter(slug, "events.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   await supabase.from("events").update({ cancelled_at: new Date().toISOString() }).eq("id", eventId).eq("chapter_id", chapter.id).is("cancelled_at", null);
   revalidatePath(`/c/${slug}/events`, "layout");
@@ -128,13 +133,16 @@ export async function checkIn(slug: string, eventId: string, token: string): Pro
   if (!rateLimit(`checkin:${user.id}`, 10, 60_000)) return { error: "Too many attempts. Wait a minute and scan again." };
   if (!verifyCheckInToken(token, eventId)) return { error: "This code has expired. Scan the code on screen again." };
   const supabase = await createClient();
-  const { data: event } = await supabase.from("events").select("id").eq("id", eventId).eq("chapter_id", chapter.id).maybeSingle();
+  const { data: event } = await supabase.from("events").select("id, starts_at").eq("id", eventId).eq("chapter_id", chapter.id).maybeSingle();
   if (!event) return { error: "Event not found." };
   try {
     const result = await adminRpc()<string>("service_qr_check_in", { p_event: eventId, p_user: user.id });
     revalidatePath(`/c/${slug}/events/${eventId}`, "layout");
+    const when = formatTime(new Date(), chapter.timezone, true);
+    const start = formatTime(event.starts_at, chapter.timezone, true);
     if (result === "already_checked_in") return { ok: true, message: "You were already checked in." };
-    return { ok: true, message: result === "late" ? "Checked in. You were marked late." : "Checked in. Enjoy the event." };
+    if (result === "late") return { ok: true, message: `Checked in at ${when}. This event starts at ${start}, and arrivals more than 15 minutes after that are marked late.` };
+    return { ok: true, message: `Checked in at ${when}.` };
   } catch (e) {
     const message = e instanceof Error ? e.message : "";
     if (message.includes("closed")) return { error: "Check-in is closed for this event." };

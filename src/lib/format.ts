@@ -10,8 +10,8 @@ export function formatDateTime(value: string | Date, timeZone = "UTC"): string {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone }).format(new Date(value));
 }
 
-export function formatTime(value: string | Date, timeZone = "UTC"): string {
-  return new Intl.DateTimeFormat("en-US", { timeStyle: "short", timeZone }).format(new Date(value));
+export function formatTime(value: string | Date, timeZone = "UTC", withZone = false): string {
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone, ...(withZone ? { timeZoneName: "short" as const } : {}) }).format(new Date(value));
 }
 
 export function formatRelative(value: string | Date, now: Date = new Date()): string {

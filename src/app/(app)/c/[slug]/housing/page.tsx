@@ -1,13 +1,13 @@
 import { BedDouble, CalendarClock, ClipboardCheck, Wrench } from "lucide-react";
 import { SimpleForm } from "@/components/simple-form";
-import { SubmitButton } from "@/components/forms";
+import { ConfirmSubmit, SubmitButton } from "@/components/forms";
 import { Badge, ButtonLink, Card, CardBody, CardHeader, EmptyState, Notice, PageHeader, Stat, StatGrid, cx } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime, formatTime, requestTime } from "@/lib/format";
 import { formatCents } from "@/lib/money";
 import { activeMembers, requireModule, todayIn } from "@/lib/modules";
 import { MAINTENANCE_STATUS, PRIORITY, REQUEST_STATUS, SUPPLY_STATUS, isCurrent, isUpcoming, type Assignment, type Room } from "./labels";
-import { cancelReservation, completeChore, requestSupply, reserveFacility, submitHousingRequest, submitMaintenance, withdrawHousingRequest } from "./actions";
+import { cancelReservation, completeChore, deleteHousingRequest, requestSupply, reserveFacility, submitHousingRequest, submitMaintenance } from "./actions";
 
 type Facility = { id: string; name: string; kind: string; reservable: boolean };
 type Reservation = { id: string; facility_id: string; user_id: string; starts_at: string; ends_at: string; purpose: string | null };
@@ -15,8 +15,9 @@ type Chore = { id: string; title: string; due_on: string; status: "pending" | "d
 type Maintenance = { id: string; title: string; priority: keyof typeof PRIORITY; status: keyof typeof MAINTENANCE_STATUS; created_at: string; submitted_by: string; assigned_membership_id: string | null; resolution_note: string | null; location: string | null };
 type Supply = { id: string; item_name: string; quantity: number; status: keyof typeof SUPPLY_STATUS; created_at: string };
 
-export default async function HousingPage({ params }: PageProps<"/c/[slug]/housing">) {
+export default async function HousingPage({ params, searchParams }: PageProps<"/c/[slug]/housing">) {
   const { slug } = await params;
+  const { error: errorParam } = await searchParams;
   const { chapter, user, membership, can } = await requireModule(slug, "housing");
   const manage = can("housing.manage");
   const supabase = await createClient();
@@ -94,6 +95,7 @@ export default async function HousingPage({ params }: PageProps<"/c/[slug]/housi
           Add every bedroom in one go with numbering like 101, 102, 201, then assign who lives where.
         </Notice>
       ) : null}
+      {typeof errorParam === "string" ? <Notice tone="danger" className="mb-8">{errorParam}</Notice> : null}
 
       <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-8">
@@ -284,28 +286,30 @@ export default async function HousingPage({ params }: PageProps<"/c/[slug]/housi
                           <Badge tone={REQUEST_STATUS[q.status].tone}>{REQUEST_STATUS[q.status].label}</Badge>
                         </div>
                         {q.response ? <p className="mt-1 text-[13px] text-ink-2">{q.response}</p> : null}
-                        {q.status === "submitted" || q.status === "waitlisted" ? (
-                          <form action={withdrawHousingRequest.bind(null, slug, q.id)} className="mt-1">
-                            <SubmitButton size="sm" variant="ghost">Withdraw</SubmitButton>
-                          </form>
-                        ) : null}
+                        <form action={deleteHousingRequest.bind(null, slug, q.id)} className="mt-1">
+                          <ConfirmSubmit message="Delete this housing request?" variant="ghost">Delete</ConfirmSubmit>
+                        </form>
                       </li>
                     ))}
                   </ul>
                 ) : null}
-                <SimpleForm
-                  action={submitHousingRequest.bind(null, slug)}
-                  submitLabel="Send request"
-                  fields={[
-                    { name: "term", label: "Term", placeholder: "Fall 2027", maxLength: 40, hint: "Sending again for the same term updates your request." },
-                    { name: "room_1", label: "First choice", type: "select", options: roomOptions, span: "half" },
-                    { name: "room_2", label: "Second choice", type: "select", options: roomOptions, span: "half" },
-                    { name: "roommate_1", label: "Roommate", type: "select", options: mateOptions, span: "half" },
-                    { name: "roommate_2", label: "Another roommate", type: "select", options: mateOptions, span: "half" },
-                    { name: "single", label: "I would prefer a single", type: "checkbox" },
-                    { name: "notes", label: "Anything else", type: "textarea", maxLength: 1000 },
-                  ]}
-                />
+                {home || next ? (
+                  <Notice title="You already have a room">A housing request is for members who are not assigned. Ask the house manager if you need to move.</Notice>
+                ) : (
+                  <SimpleForm
+                    action={submitHousingRequest.bind(null, slug)}
+                    submitLabel="Send request"
+                    fields={[
+                      { name: "term", label: "Term", placeholder: "Fall 2027", maxLength: 40, hint: "Sending again for the same term updates your request." },
+                      { name: "room_1", label: "First choice", type: "select", options: roomOptions, span: "half" },
+                      { name: "room_2", label: "Second choice", type: "select", options: roomOptions, span: "half" },
+                      { name: "roommate_1", label: "Roommate", type: "select", options: mateOptions, span: "half" },
+                      { name: "roommate_2", label: "Another roommate", type: "select", options: mateOptions, span: "half" },
+                      { name: "single", label: "I would prefer a single", type: "checkbox" },
+                      { name: "notes", label: "Anything else", type: "textarea", maxLength: 1000 },
+                    ]}
+                  />
+                )}
               </CardBody>
             </Card>
           ) : null}

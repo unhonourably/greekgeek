@@ -10,6 +10,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { formField, optionalText, requireModule, todayIn } from "@/lib/modules";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState, setupLocked } from "@/lib/setup-access";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{2}:\d{2}$/;
@@ -37,6 +38,8 @@ const roomSchema = z.object({
 
 export async function saveRoom(slug: string, roomId: string | null, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = roomSchema.safeParse({
     name: formField(formData, "name"),
     floor: optionalText(formData, "floor"),
@@ -83,6 +86,8 @@ const bulkSchema = z
 
 export async function createRooms(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   if (!rateLimit(`bulk-rooms:${user.id}`, 20, 60 * 60_000)) return { error: "Too many updates. Try again later." };
   let raw: unknown;
   try {
@@ -101,7 +106,8 @@ export async function createRooms(slug: string, _: ActionState, formData: FormDa
 }
 
 export async function archiveRoom(slug: string, roomId: string, archived: boolean): Promise<void> {
-  await requireModule(slug, "housing", "housing.manage");
+  const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { error } = await supabase.rpc("set_housing_room_archived", { p_room: roomId, p_archived: archived });
   if (error) redirect(`/c/${slug}/housing/rooms?error=${encodeURIComponent(error.code === "23505" ? "Another room already uses that name. Rename it first." : housingError(error))}`);
@@ -116,7 +122,9 @@ const assignSchema = z.object({
 });
 
 export async function assignRoom(slug: string, roomId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireModule(slug, "housing", "housing.manage");
+  const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = assignSchema.safeParse({
     membership_id: formField(formData, "membership_id"),
     starts_on: formField(formData, "starts_on"),
@@ -144,7 +152,9 @@ const endSchema = z.object({
 });
 
 export async function endAssignment(slug: string, assignmentId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireModule(slug, "housing", "housing.manage");
+  const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = endSchema.safeParse({ ends_on: formField(formData, "ends_on"), reason: optionalText(formData, "reason") });
   if (!parsed.success) return zodState(parsed.error);
   const supabase = await createClient();
@@ -197,13 +207,25 @@ export async function withdrawHousingRequest(slug: string, requestId: string): P
   refresh(slug);
 }
 
+export async function deleteHousingRequest(slug: string, requestId: string): Promise<void> {
+  const { chapter, membership, can } = await requireModule(slug, "housing");
+  const supabase = await createClient();
+  const { data } = await supabase.from("housing_requests").select("membership_id").eq("id", requestId).eq("chapter_id", chapter.id).maybeSingle();
+  if (can("housing.manage") && data && data.membership_id !== membership.id && (await setupLocked(chapter.id))) return;
+  const { error } = await supabase.rpc("delete_housing_request", { p_request: requestId });
+  if (error) redirect(`/c/${slug}/housing${can("housing.manage") ? "/rooms" : ""}?error=${encodeURIComponent(dbErrorMessage(error))}`);
+  refresh(slug);
+}
+
 const respondSchema = z.object({
   status: z.enum(["waitlisted", "placed", "declined"]),
   response: z.string().max(500).nullable(),
 });
 
 export async function respondHousingRequest(slug: string, requestId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireModule(slug, "housing", "housing.manage");
+  const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = respondSchema.safeParse({ status: formField(formData, "status"), response: optionalText(formData, "response") });
   if (!parsed.success) return zodState(parsed.error);
   const supabase = await createClient();
@@ -220,6 +242,8 @@ const rentSchema = z.object({
 
 export async function billRent(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireModule(slug, "housing", "finance.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = rentSchema.safeParse({ title: formField(formData, "title"), due_date: formField(formData, "due_date") });
   if (!parsed.success) return zodState(parsed.error);
   if (parsed.data.due_date < todayIn(chapter.timezone, Date.now())) return { fieldErrors: { due_date: "Due date cannot be in the past" } };
@@ -265,6 +289,8 @@ const maintenanceUpdate = z.object({
 
 export async function updateMaintenance(slug: string, id: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = maintenanceUpdate.safeParse({
     status: formField(formData, "status"),
     assigned_membership_id: optionalText(formData, "assigned_membership_id"),
@@ -358,6 +384,7 @@ export async function requestSupply(slug: string, _: ActionState, formData: Form
 
 export async function setSupplyStatus(slug: string, id: string, status: "approved" | "fulfilled" | "declined"): Promise<void> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const allowedFrom = status === "fulfilled" ? ["requested", "approved"] : ["requested"];
   await supabase.from("supply_requests").update({ status }).eq("id", id).eq("chapter_id", chapter.id).in("status", allowedFrom);
@@ -372,6 +399,8 @@ const facilitySchema = z.object({
 
 export async function addFacility(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = facilitySchema.safeParse({ name: formField(formData, "name"), kind: formField(formData, "kind"), reservable: formData.get("reservable") === "on" });
   if (!parsed.success) return zodState(parsed.error);
   const supabase = await createClient();
@@ -383,6 +412,7 @@ export async function addFacility(slug: string, _: ActionState, formData: FormDa
 
 export async function setReservable(slug: string, id: string, reservable: boolean): Promise<void> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   await supabase.from("facilities").update({ reservable }).eq("id", id).eq("chapter_id", chapter.id);
   refresh(slug);
@@ -396,6 +426,8 @@ const choreSchema = z.object({
 
 export async function assignChore(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = choreSchema.safeParse({ title: formField(formData, "title"), assigned_membership_id: formField(formData, "assigned_membership_id"), due_on: formField(formData, "due_on") });
   if (!parsed.success) return zodState(parsed.error);
   if (parsed.data.due_on < todayIn(chapter.timezone, Date.now())) return { fieldErrors: { due_on: "Due date cannot be in the past" } };
@@ -408,6 +440,7 @@ export async function assignChore(slug: string, _: ActionState, formData: FormDa
 
 export async function markChoreMissed(slug: string, id: string): Promise<void> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   await supabase.from("chores").update({ status: "missed" }).eq("id", id).eq("chapter_id", chapter.id).eq("status", "pending");
   refresh(slug);
@@ -423,6 +456,8 @@ const inventorySchema = z.object({
 
 export async function saveInventoryItem(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const reorder = formField(formData, "reorder_level");
   const parsed = inventorySchema.safeParse({
     name: formField(formData, "name"),
@@ -443,6 +478,7 @@ export async function saveInventoryItem(slug: string, _: ActionState, formData: 
 
 export async function adjustInventory(slug: string, id: string, delta: number): Promise<void> {
   const { chapter } = await requireModule(slug, "housing", "housing.manage");
+  if (await setupLocked(chapter.id)) return;
   if (!Number.isInteger(delta) || Math.abs(delta) > 1000) return;
   const supabase = await createClient();
   const { data } = await supabase.from("inventory_items").select("quantity").eq("id", id).eq("chapter_id", chapter.id).maybeSingle();

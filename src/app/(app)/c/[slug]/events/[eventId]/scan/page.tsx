@@ -22,7 +22,7 @@ export default async function ScanPage({ params, searchParams }: PageProps<"/c/[
             <p className="text-[13px] text-ink-3">{chapter.organization_name}</p>
             <h1 className="mt-1 text-lg font-semibold text-ink">{e.title}</h1>
             <p className="text-[13px] text-ink-3 tnum">
-              {formatTime(e.starts_at, chapter.timezone)} – {formatTime(e.ends_at, chapter.timezone)}
+              {formatTime(e.starts_at, chapter.timezone)} – {formatTime(e.ends_at, chapter.timezone, true)}
               {e.location ? ` · ${e.location}` : ""}
             </p>
           </div>

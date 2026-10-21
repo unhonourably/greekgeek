@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { BedDouble, DoorOpen, Inbox, Plus } from "lucide-react";
 import { SimpleForm } from "@/components/simple-form";
-import { SubmitButton } from "@/components/forms";
+import { ConfirmSubmit, SubmitButton } from "@/components/forms";
 import { Badge, ButtonLink, Card, CardBody, CardHeader, EmptyState, Notice, PageHeader, Stat, StatGrid, Table, Td, Th, TextLink, Tr, cx } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, requestTime } from "@/lib/format";
 import { formatCents } from "@/lib/money";
 import { activeMembers, requireModule, todayIn } from "@/lib/modules";
 import { REQUEST_STATUS, isCurrent, isUpcoming, type Assignment, type Room } from "../labels";
-import { archiveRoom, assignRoom, billRent, endAssignment, respondHousingRequest, saveRoom } from "../actions";
+import { archiveRoom, assignRoom, billRent, deleteHousingRequest, endAssignment, respondHousingRequest, saveRoom } from "../actions";
 
 export const metadata: Metadata = { title: "Rooms" };
 
@@ -260,10 +260,13 @@ export default async function RoomsPage({ params, searchParams }: PageProps<"/c/
                           action={respondHousingRequest.bind(null, slug, q.id)}
                           submitLabel="Send response"
                           fields={[
-                            { name: "status", label: "Answer", type: "select", defaultValue: "waitlisted", options: [{ value: "waitlisted", label: "Waitlist" }, { value: "placed", label: "Placed" }, { value: "declined", label: "Not placed" }], span: "half" },
+                            { name: "status", label: "Answer", type: "select", defaultValue: "waitlisted", options: [{ value: "waitlisted", label: "Waitlist" }, { value: "declined", label: "Not placed" }], span: "half" },
                             { name: "response", label: "Note to the member", maxLength: 500, span: "half" },
                           ]}
                         />
+                        <form action={deleteHousingRequest.bind(null, slug, q.id)}>
+                          <ConfirmSubmit message="Delete this housing request?">Delete request</ConfirmSubmit>
+                        </form>
                       </div>
                     </details>
                   </li>

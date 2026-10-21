@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Check } from "lucide-react";
-import { Badge, ButtonLink, Card, CardBody, PageHeader, cx } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, CardBody, Notice, PageHeader, cx } from "@/components/ui";
 import { requireChapter } from "@/lib/auth";
 import { loadChapterSetup } from "@/lib/chapter-setup";
 import { restoreSetupStep, skipSetupStep } from "./actions";
@@ -14,13 +14,19 @@ export default async function SetupPage({ params }: PageProps<"/c/[slug]/setup">
   const done = steps.filter((step) => step.done).length;
   const next = steps.find((step) => !step.done);
   const pct = Math.round((done / steps.length) * 100);
+  const preview = steps.some((step) => step.preview);
 
   return (
     <>
       <PageHeader
         title="Chapter setup"
-        description={next ? `${done} of ${steps.length} finished. ${next.title} is the next step.` : "Every setup step is finished. You can still open any of them."}
+        description={preview ? "Start the subscription before the other steps can be changed. You can still read what each one is for." : next ? `${done} of ${steps.length} finished. ${next.title} is the next step.` : "Every setup step is finished. You can still open any of them."}
       />
+      {preview ? (
+        <Notice tone="info" title="Subscription required" className="mb-6" action={<ButtonLink href={`/c/${slug}/settings/billing`} size="sm">Activate subscription</ButtonLink>}>
+          These steps stay a preview until the chapter subscription is active.
+        </Notice>
+      ) : null}
       <Card className="mb-6">
         <CardBody>
           <div className="flex items-center justify-between gap-3 text-[13px] text-ink-2">
@@ -49,17 +55,23 @@ export default async function SetupPage({ params }: PageProps<"/c/[slug]/setup">
                   </div>
                   <p className="mt-1 text-sm leading-relaxed text-ink-2">{step.detail}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <ButtonLink href={step.href} size="sm" variant={step.done ? "secondary" : "primary"}>
-                      {step.done ? "Open" : "Go to this step"}
-                    </ButtonLink>
-                    {step.optional && !step.done ? (
+                    {step.preview ? (
+                      <Button type="button" size="sm" variant="secondary" disabled>
+                        Preview
+                      </Button>
+                    ) : (
+                      <ButtonLink href={step.href} size="sm" variant={step.done ? "secondary" : "primary"}>
+                        {step.done ? "Open" : "Go to this step"}
+                      </ButtonLink>
+                    )}
+                    {step.optional && !step.done && !step.preview ? (
                       <form action={skipSetupStep.bind(null, slug, step.id)}>
                         <button type="submit" className="h-8 rounded-md px-3 text-[13px] text-ink-2 hover:bg-subtle hover:text-ink">
                           Skip for now
                         </button>
                       </form>
                     ) : null}
-                    {step.skipped ? (
+                    {step.skipped && !step.preview ? (
                       <form action={restoreSetupStep.bind(null, slug, step.id)}>
                         <button type="submit" className="h-8 rounded-md px-3 text-[13px] text-ink-2 hover:bg-subtle hover:text-ink">
                           Put this back

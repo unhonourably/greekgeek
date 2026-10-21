@@ -224,7 +224,15 @@ describe("program modules", () => {
         ]),
       );
       await db.rpc("authenticated", member.userId, "signup_volunteer_shift", { p_shift: shift.rows[0].id, p_join: true });
+      await db.rpc("authenticated", member.userId, "signup_volunteer_shift", { p_shift: shift.rows[0].id, p_join: true });
       await expectDenied(db.rpc("authenticated", other.userId, "signup_volunteer_shift", { p_shift: shift.rows[0].id, p_join: true }), /full/);
+      const ended = await db.asUser(philanthropy.userId, (tx) =>
+        tx.query<{ id: string }>("insert into public.volunteer_shifts (chapter_id, event_id, name, starts_at, ends_at, slots) values ($1, $2, 'Already over', now() - interval '2 hours', now() - interval '1 hour', 4) returning id", [
+          chapter.chapterId,
+          ev.rows[0].id,
+        ]),
+      );
+      await expectDenied(db.rpc("authenticated", member.userId, "signup_volunteer_shift", { p_shift: ended.rows[0].id, p_join: true }), /ended/);
       await db.rpc("authenticated", member.userId, "signup_volunteer_shift", { p_shift: shift.rows[0].id, p_join: false });
       await db.rpc("authenticated", other.userId, "signup_volunteer_shift", { p_shift: shift.rows[0].id, p_join: true });
     });

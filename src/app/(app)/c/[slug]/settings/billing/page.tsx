@@ -106,7 +106,7 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
         <Card>
           <CardHeader
             title="Set up dues collection"
-            description="Four steps before members can pay online. Your chapter can use every other feature in the meantime."
+            description="Four steps before members can pay online. The other setup steps stay locked until this subscription is active."
             actions={canCollect ? <Badge tone="positive">Ready to collect</Badge> : <Badge tone="warning">Not collecting yet</Badge>}
           />
           <CardBody className="py-6">

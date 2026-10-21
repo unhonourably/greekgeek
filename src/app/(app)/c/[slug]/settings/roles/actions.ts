@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { dbErrorMessage } from "@/lib/errors";
 import { PERMISSIONS } from "@/lib/permissions";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState, setupLocked } from "@/lib/setup-access";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Use at least 2 characters").max(60),
@@ -18,6 +19,8 @@ const schema = z.object({
 
 export async function saveRole(slug: string, roleId: string | null, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireChapter(slug, "roles.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = schema.safeParse({
     name: formData.get("name"),
     description: formData.get("description") ?? undefined,
@@ -49,6 +52,7 @@ export async function saveRole(slug: string, roleId: string | null, _: ActionSta
 
 export async function deleteRole(slug: string, roleId: string): Promise<void> {
   const { chapter } = await requireChapter(slug, "roles.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { error } = await supabase.from("roles").delete().eq("id", roleId).eq("chapter_id", chapter.id);
   if (error) redirect(`/c/${slug}/settings/roles/${roleId}?error=${encodeURIComponent(dbErrorMessage(error))}`);

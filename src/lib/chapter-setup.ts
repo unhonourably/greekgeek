@@ -1,5 +1,6 @@
 import "server-only";
 import type { Permission } from "@/lib/permissions";
+import { getStaffRole } from "@/lib/auth";
 import { getReadiness, subscriptionInGoodStanding, type Readiness } from "@/lib/readiness";
 import { createClient } from "@/lib/supabase/server";
 
@@ -11,6 +12,7 @@ export type SetupStep = {
   done: boolean;
   skipped: boolean;
   optional: boolean;
+  preview: boolean;
 };
 
 const SKIPPABLE = ["housing", "events", "recruitment", "philanthropy", "academics", "standards"] as const;
@@ -55,7 +57,7 @@ export async function loadChapterSetup(chapter: { id: string; slug: string; modu
   });
   const settings = `${base}/settings#modules`;
 
-  const steps: Array<Omit<SetupStep, "done"> & { complete: boolean }> = [
+  const steps: Array<Omit<SetupStep, "done" | "preview"> & { complete: boolean }> = [
     {
       id: "profile",
       title: "Write the chapter profile",
@@ -162,6 +164,7 @@ export async function loadChapterSetup(chapter: { id: string; slug: string; modu
     },
   ];
 
+  const locked = (await getStaffRole()) !== "admin" && !subscriptionInGoodStanding(readiness?.subscription ?? "none");
   return steps.map((step) => ({
     id: step.id,
     title: step.title,
@@ -170,5 +173,6 @@ export async function loadChapterSetup(chapter: { id: string; slug: string; modu
     optional: step.optional,
     skipped: step.skipped && !step.complete,
     done: step.complete || step.skipped,
+    preview: locked && step.id !== "billing",
   }));
 }

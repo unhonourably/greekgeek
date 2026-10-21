@@ -72,7 +72,7 @@ export default async function EventsPage({ params, searchParams }: PageProps<"/c
                   <li key={e.id}>
                     <Link href={`${base}/${e.id}`} className="flex flex-wrap items-center gap-x-6 gap-y-1 px-5 py-3.5 hover:bg-canvas/50">
                       <span className="w-32 shrink-0 text-sm text-ink-2 tnum">
-                        {formatTime(e.starts_at, tz)} – {formatTime(e.ends_at, tz)}
+                        {formatTime(e.starts_at, tz)} – {formatTime(e.ends_at, tz, true)}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className={cx("block truncate font-medium", e.cancelled_at ? "text-ink-3 line-through" : "text-ink")}>{e.title}</span>

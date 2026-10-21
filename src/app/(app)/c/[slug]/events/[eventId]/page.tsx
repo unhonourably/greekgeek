@@ -76,7 +76,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/c/
               </p>
               <p className="flex items-center gap-2 text-sm text-ink">
                 <Clock className="size-4 text-ink-3" aria-hidden />
-                <span className="tnum">{formatTime(e.starts_at, tz)} – {formatTime(e.ends_at, tz)}</span>
+                <span className="tnum">{formatTime(e.starts_at, tz)} – {formatTime(e.ends_at, tz, true)}</span>
               </p>
               {e.location ? (
                 <p className="flex items-center gap-2 text-sm text-ink">
@@ -151,7 +151,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/c/
                 <p className="flex items-center gap-2 text-sm">
                   <Badge tone={ATTENDANCE_TONE[attendance.status as AttendanceStatus]}>{ATTENDANCE_LABEL[attendance.status as AttendanceStatus]}</Badge>
                   <span className="text-ink-3">
-                    {attendance.method === "qr" ? "Checked in" : "Recorded"} {formatTime(attendance.checked_in_at, tz)}
+                    {attendance.method === "qr" ? "Checked in" : "Recorded"} {formatTime(attendance.checked_in_at, tz, true)}
                   </span>
                 </p>
               ) : (

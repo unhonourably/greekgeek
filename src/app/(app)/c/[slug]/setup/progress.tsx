@@ -20,7 +20,7 @@ export function SetupProgress({ steps, base }: { steps: SetupStep[]; base: strin
         <p className="mt-4 text-sm font-medium text-ink">Next: {next.title}</p>
         <p className="mt-1 text-sm leading-relaxed text-ink-2">{next.detail}</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <ButtonLink href={next.href} size="sm">Continue</ButtonLink>
+          {next.preview ? <ButtonLink href={`${base}/settings/billing`} size="sm">Activate subscription</ButtonLink> : <ButtonLink href={next.href} size="sm">Continue</ButtonLink>}
           <TextLink href={`${base}/setup`} className="text-[13px]">All steps</TextLink>
         </div>
       </CardBody>

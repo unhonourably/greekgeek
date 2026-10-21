@@ -7,6 +7,7 @@ import { dbErrorMessage, zodState } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
 import { formField, optionalText, requireModule } from "@/lib/modules";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState } from "@/lib/setup-access";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -19,6 +20,8 @@ const groupSchema = z.object({
 
 export async function createStudyGroup(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireModule(slug, "academics");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   if (!rateLimit(`studygroup:${user.id}`, 10, 60 * 60_000)) return { error: "Too many groups created. Try again later." };
   const parsed = groupSchema.safeParse({
     name: formField(formData, "name"),
@@ -87,6 +90,8 @@ const pairSchema = z
 
 export async function createMentorship(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user, can } = await requireModule(slug, "academics");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   if (!can("academics.manage")) return { error: "You do not have permission to do that." };
   const parsed = pairSchema.safeParse({ mentor_membership_id: formField(formData, "mentor_membership_id"), mentee_membership_id: formField(formData, "mentee_membership_id") });
   if (!parsed.success) return zodState(parsed.error);
@@ -96,9 +101,8 @@ export async function createMentorship(slug: string, _: ActionState, formData: F
     .select("id", { count: "exact", head: true })
     .eq("chapter_id", chapter.id)
     .eq("status", "active")
-    .eq("mentor_membership_id", parsed.data.mentor_membership_id)
     .eq("mentee_membership_id", parsed.data.mentee_membership_id);
-  if (count) return { error: "These members are already paired." };
+  if (count) return { error: "This member already has a mentor." };
   const { error } = await supabase.from("mentorship_pairs").insert({ chapter_id: chapter.id, created_by: user.id, ...parsed.data });
   if (error) return { error: dbErrorMessage(error) };
   revalidatePath(`/c/${slug}/academics`);

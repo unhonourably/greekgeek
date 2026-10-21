@@ -9,6 +9,7 @@ import { parseDollarsToCents } from "@/lib/money";
 import { formField, optionalText, requireModule, todayIn } from "@/lib/modules";
 import { zonedTimeToUtc } from "@/lib/timezone";
 import type { ActionState } from "@/lib/action-state";
+import { setupLockState, setupLocked } from "@/lib/setup-access";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -70,6 +71,8 @@ const campaignSchema = z
 
 export async function saveCampaign(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter, user } = await requireModule(slug, "philanthropy", "philanthropy.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = campaignSchema.safeParse({
     name: formField(formData, "name"),
     beneficiary: formField(formData, "beneficiary"),
@@ -90,6 +93,7 @@ export async function saveCampaign(slug: string, _: ActionState, formData: FormD
 
 export async function setCampaignStatus(slug: string, id: string, status: "active" | "closed"): Promise<void> {
   const { chapter } = await requireModule(slug, "philanthropy", "philanthropy.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   await supabase.from("fundraising_campaigns").update({ status }).eq("id", id).eq("chapter_id", chapter.id);
   revalidatePath(`/c/${slug}/philanthropy`);
@@ -138,6 +142,8 @@ const shiftSchema = z.object({
 
 export async function addVolunteerShift(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { chapter } = await requireModule(slug, "philanthropy", "philanthropy.manage");
+  const blocked = await setupLockState(chapter.id);
+  if (blocked) return blocked;
   const parsed = shiftSchema.safeParse({
     event_id: formField(formData, "event_id"),
     name: formField(formData, "name"),
@@ -178,6 +184,7 @@ export async function toggleShift(slug: string, shiftId: string, join: boolean):
 
 export async function deleteShift(slug: string, shiftId: string): Promise<void> {
   const { chapter } = await requireModule(slug, "philanthropy", "philanthropy.manage");
+  if (await setupLocked(chapter.id)) return;
   const supabase = await createClient();
   const { count } = await supabase.from("volunteer_signups").select("user_id", { count: "exact", head: true }).eq("shift_id", shiftId);
   if (count) return;

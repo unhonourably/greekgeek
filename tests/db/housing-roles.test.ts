@@ -253,6 +253,42 @@ describe("housing rooms", () => {
     await db.rpc("authenticated", c.userId, "withdraw_housing_request", { p_request: id });
   });
 
+  it("refuses a request from someone who already has a room and lets a request be deleted", async () => {
+    await expectDenied(
+      db.rpc("authenticated", a.userId, "submit_housing_request", { p_chapter: chapter.chapterId, p_term: "Fall 2027", p_rooms: [], p_roommates: [], p_single: false, p_notes: null }),
+      /already have a room/,
+    );
+    const id = await db.rpc<string>("authenticated", c.userId, "submit_housing_request", {
+      p_chapter: chapter.chapterId, p_term: "Spring 2028", p_rooms: [], p_roommates: [], p_single: false, p_notes: null,
+    });
+    await expectDenied(
+      db.rpc("authenticated", manager.userId, "respond_housing_request", { p_request: id, p_status: "placed", p_response: null }),
+      /assign them a room/,
+    );
+    await expectDenied(db.rpc("authenticated", b.userId, "delete_housing_request", { p_request: id }), /not authorized/);
+    await db.rpc("authenticated", c.userId, "delete_housing_request", { p_request: id });
+    expect((await db.pg.query("select 1 from public.housing_requests where id = $1", [id])).rows).toHaveLength(0);
+    const again = await db.rpc<string>("authenticated", c.userId, "submit_housing_request", {
+      p_chapter: chapter.chapterId, p_term: "Spring 2028", p_rooms: [], p_roommates: [], p_single: false, p_notes: null,
+    });
+    await db.rpc("authenticated", manager.userId, "delete_housing_request", { p_request: again });
+    expect((await db.pg.query("select 1 from public.housing_requests where id = $1", [again])).rows).toHaveLength(0);
+  });
+
+  it("replaces a same-day assignment when someone moves", async () => {
+    const today = await day(db, 0);
+    const until = await day(db, 9);
+    const roomC = await save(manager.userId, { p_name: "103", p_capacity: 1 });
+    await db.rpc("authenticated", manager.userId, "assign_room", { p_room: roomB, p_membership: c.membershipId, p_starts_on: today, p_ends_on: until, p_bed: null });
+    await db.rpc("authenticated", manager.userId, "assign_room", { p_room: roomC, p_membership: c.membershipId, p_starts_on: today, p_ends_on: until, p_bed: null });
+    const rows = await db.pg.query<{ room_id: string }>("select room_id from public.room_assignments where membership_id = $1", [c.membershipId]);
+    expect(rows.rows).toEqual([{ room_id: roomC }]);
+    await expectDenied(
+      db.rpc("authenticated", manager.userId, "assign_room", { p_room: roomC, p_membership: c.membershipId, p_starts_on: today, p_ends_on: until, p_bed: null }),
+      /already assigned to this room/,
+    );
+  });
+
   it("bills current residents their room's rent", async () => {
     const due = await day(db, 14);
     await expectDenied(db.rpc("authenticated", manager.userId, "bill_room_rent", { p_chapter: chapter.chapterId, p_title: "Rent", p_due_date: due }), /not authorized/);
