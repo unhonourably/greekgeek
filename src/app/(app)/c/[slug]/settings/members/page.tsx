@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Search, Upload, UserPlus, Users, X } from "lucide-react";
 import { Avatar, RoleBadges, personName, type RoleChip } from "@/components/people";
-import { Badge, Card, CardBody, CardHeader, EmptyState, Input, Notice, Table, Td, Th, TextLink, Tr, buttonClass } from "@/components/ui";
+import { Badge, Card, CardBody, CardHeader, EmptyState, Input, Notice, TextLink, buttonClass } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/forms";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -90,52 +90,34 @@ export default async function MembersSettingsPage({ params, searchParams }: Page
                 {q ? <TextLink href={status ? `${base}?status=${status}` : base}>Clear search</TextLink> : "Add people with the form on this page."}
               </EmptyState>
             ) : (
-              <div className="-mx-5 overflow-x-auto">
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th className="pl-5">Name</Th>
-                      <Th>Class</Th>
-                      <Th>Roles</Th>
-                      {credits ? <Th>Recruited by</Th> : null}
-                      <Th>Joined</Th>
-                      <Th className="pr-5" align="right"><span className="sr-only">Manage</span></Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((m) => (
-                      <Tr key={m.membership_id}>
-                        <Td className="pl-5">
-                          <span className="flex items-center gap-2.5">
-                            <Avatar name={personName(m)} path={m.avatar_path} />
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium text-ink">{personName(m)}</span>
-                              {m.full_name && m.display_name && m.display_name !== m.full_name ? <span className="block truncate text-xs text-ink-3">{m.full_name}</span> : null}
-                            </span>
-                          </span>
-                        </Td>
-                        <Td>
-                          {MEMBER_CLASS_LABEL[m.member_class]}
+              <ul className="-mx-5 divide-y divide-line border-t border-line">
+                {rows.map((m) => {
+                  const credit = credits?.get(m.membership_id);
+                  const recruited = !credits ? null : credit?.recruiterName ? `Recruited by ${credit.recruiterName}` : credits.has(m.membership_id) ? "Recruiter not sure" : "Recruiter not recorded";
+                  return (
+                    <li key={m.membership_id} className="flex items-start gap-3 px-5 py-3">
+                      <Avatar name={personName(m)} path={m.avatar_path} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium text-ink">{personName(m)}</span>
+                          <span className="text-sm text-ink-2">{MEMBER_CLASS_LABEL[m.member_class]}</span>
                           {m.member_class === "active" && typeof m.in_house === "boolean" ? (
-                            <Badge className="ml-1.5" tone={m.in_house ? "positive" : "neutral"}>{m.in_house ? "In house" : "Out of house"}</Badge>
+                            <Badge tone={m.in_house ? "positive" : "neutral"}>{m.in_house ? "In house" : "Out of house"}</Badge>
                           ) : null}
-                          {m.status === "inactive" ? <Badge className="ml-1.5">{MEMBERSHIP_STATUS_LABEL.inactive}</Badge> : null}
-                        </Td>
-                        <Td><RoleBadges roles={m.roles} /></Td>
-                        {credits ? (
-                          <Td className="whitespace-nowrap text-ink-2">
-                            {credits.get(m.membership_id)?.recruiterName ?? <span className="text-ink-3">{credits.has(m.membership_id) ? "Not sure" : "Not recorded"}</span>}
-                          </Td>
-                        ) : null}
-                        <Td className="whitespace-nowrap text-ink-2">{formatDate(m.joined_at, chapter.timezone)}</Td>
-                        <Td className="pr-5" align="right">
-                          <Link href={`${base}/${m.membership_id}`} className={buttonClass("ghost", "sm")}>Manage</Link>
-                        </Td>
-                      </Tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </div>
+                          {m.status === "inactive" ? <Badge>{MEMBERSHIP_STATUS_LABEL.inactive}</Badge> : null}
+                        </div>
+                        {m.full_name && m.display_name && m.display_name !== m.full_name ? <p className="truncate text-xs text-ink-3">{m.full_name}</p> : null}
+                        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-3">
+                          {recruited ? <span>{recruited}</span> : null}
+                          <span>Joined {formatDate(m.joined_at, chapter.timezone)}</span>
+                        </p>
+                        <RoleBadges roles={m.roles} className="mt-1.5" />
+                      </div>
+                      <Link href={`${base}/${m.membership_id}`} className={buttonClass("ghost", "sm") + " shrink-0"}>Manage</Link>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </CardBody>
         </Card>
@@ -145,43 +127,31 @@ export default async function MembersSettingsPage({ params, searchParams }: Page
           {(invites ?? []).length === 0 ? (
             <CardBody><p className="text-sm text-ink-3">No pending invitations.</p></CardBody>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <thead>
-                  <tr>
-                    <Th className="pl-5">Email</Th>
-                    <Th>Class</Th>
-                    <Th>Roles</Th>
-                    <Th>Expires</Th>
-                    <Th className="pr-5" align="right"><span className="sr-only">Revoke</span></Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(invites ?? []).map((inv) => {
-                    const expired = new Date(inv.expires_at as string).getTime() < now;
-                    return (
-                      <Tr key={inv.id as string}>
-                        <Td className="pl-5">
-                          <span className="block font-medium text-ink">{inv.email as string}</span>
-                          {inv.full_name ? <span className="block text-xs text-ink-3">{inv.full_name as string}</span> : null}
-                        </Td>
-                        <Td>{MEMBER_CLASS_LABEL[inv.member_class as MemberClass]}</Td>
-                        <Td className="text-ink-2">{((inv.role_keys as string[]) ?? []).map((k) => roleName.get(k) ?? k).join(", ") || <span className="text-ink-3">None</span>}</Td>
-                        <Td className="whitespace-nowrap">{expired ? <Badge tone="warning">Expired</Badge> : formatDate(inv.expires_at as string, chapter.timezone)}</Td>
-                        <Td className="pr-5" align="right">
-                          <form action={revokeInvitation.bind(null, slug, inv.id as string)}>
-                            <ConfirmSubmit message={`Revoke the invitation for ${inv.email}?`} variant="ghost">
-                              <X className="size-4" aria-hidden />
-                              Revoke
-                            </ConfirmSubmit>
-                          </form>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            </div>
+            <ul className="divide-y divide-line">
+              {(invites ?? []).map((inv) => {
+                const expired = new Date(inv.expires_at as string).getTime() < now;
+                const roleLabel = ((inv.role_keys as string[]) ?? []).map((k) => roleName.get(k) ?? k).join(", ");
+                return (
+                  <li key={inv.id as string} className="flex items-start gap-3 px-5 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-ink">{inv.email as string}</p>
+                      {inv.full_name ? <p className="truncate text-xs text-ink-3">{inv.full_name as string}</p> : null}
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3">
+                        <span>{MEMBER_CLASS_LABEL[inv.member_class as MemberClass]}</span>
+                        <span>{roleLabel || "No role"}</span>
+                        {expired ? <Badge tone="warning">Expired</Badge> : <span>Expires {formatDate(inv.expires_at as string, chapter.timezone)}</span>}
+                      </p>
+                    </div>
+                    <form action={revokeInvitation.bind(null, slug, inv.id as string)} className="shrink-0">
+                      <ConfirmSubmit message={`Revoke the invitation for ${inv.email}?`} variant="ghost">
+                        <X className="size-4" aria-hidden />
+                        Revoke
+                      </ConfirmSubmit>
+                    </form>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Card>
       </div>
