@@ -33,6 +33,7 @@ export function outreachEmail(contact: OutreachContact, introUrl?: string | null
     "Our goal is to reduce the time officers spend juggling spreadsheets, payment tools, group chats, and separate platforms, so they can focus on their members and chapter experience.",
     "GreekGeek costs $30 per chapter per month and includes unlimited members and officers. Online dues payments also have a 1.5% GreekGeek platform fee plus standard Stripe processing fees. Each chapter connects its own Stripe account and receives dues directly; GreekGeek does not hold chapter funds.",
     `We'd love to introduce GreekGeek to ${contact.organization} leadership at ${contact.university} and see whether it could help. Would you be open to a brief demo or conversation?`,
+    "Feel free to just reply to this email with any questions or a good time to talk. Replies come straight to my inbox, and I read every one.",
     "If you'd like to learn more, you can also text me at (636) 515-1794 to set up a meeting. Just send a day and time that works for you, and I'll make it happen, whether that's a quick call, a video meeting, or meeting in person.",
     [
       "Website: https://greekgeek.org",

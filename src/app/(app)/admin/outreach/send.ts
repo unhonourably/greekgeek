@@ -59,12 +59,16 @@ function outreachMessage(to: string, subject: string, body: string, idempotencyK
 export async function deliverOutreach(userId: string, id: string, formData: FormData): Promise<ActionState> {
   const letter = readLetter(formData);
   if ("error" in letter) return { error: letter.error };
-  const { subject, body } = letter;
   if (!serverEnv.resendApiKey()) return { error: "Sending is off because RESEND_API_KEY is not set on the server." };
   const supabase = await createClient();
   const { data: contact } = await supabase.from("outreach_contacts").select("id, email, do_not_contact, university_id").eq("id", id).maybeSingle();
   if (!contact) return { error: "This contact no longer exists." };
   if (contact.do_not_contact) return { error: "This contact is marked do not contact." };
+  const includeForm = formData.get("include_form") === "on";
+  const link = includeForm ? (await formLinks(supabase, [contact], true)).get(contact.id) ?? null : null;
+  const subject = letter.subject;
+  const body = withFormLink(letter.body, link);
+  const formNote = includeForm ? (link ? " The form link was included." : " No school matched their email, so it went without a form link.") : " No form link included.";
   const { data: row, error } = await supabase
     .from("outreach_emails")
     .insert({ contact_id: id, direction: "sent", status: "sending", subject, body, to_email: contact.email, sent_by: userId })
@@ -82,7 +86,7 @@ export async function deliverOutreach(userId: string, id: string, formData: Form
     return { error: `Not sent: ${message}` };
   }
   refreshOutreach(id, contact.university_id);
-  return { ok: true, message: `Sent to ${contact.email}.` };
+  return { ok: true, message: `Sent to ${contact.email}.${formNote}` };
 }
 
 export const BULK_COLUMNS = "id, full_name, organization, role, email, university, university_id, do_not_contact, emails_sent, replies, bulk_added_at, bulk_subject, bulk_body";

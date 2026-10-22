@@ -2,11 +2,12 @@
 
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { ListPlus, Send } from "lucide-react";
+import { ListPlus } from "lucide-react";
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms";
 import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
 import { BulkToggle } from "./bulk-toggle";
 import { sendOutreachLetter } from "./letter-action";
+import { SendConfirm } from "./send-confirm";
 import { Collapse, SentPanel } from "./sent-panel";
 
 export type LetterDraft = {
@@ -108,18 +109,14 @@ export function WriteLetters({ drafts, from, replyTo, canSend }: { drafts: Lette
                     <Field label="Message" htmlFor="send-body">
                       <Textarea id="send-body" name="body" defaultValue={letter.body} className="min-h-64 font-sans text-[13px] leading-relaxed" />
                     </Field>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <SubmitButton name="intent" value="send" pendingLabel="Sending" disabled={letter.blocked || !canSend}>
-                        <Send className="size-4" aria-hidden />
-                        {letter.emailsSent > 0 ? "Send again" : "Send email"}
-                      </SubmitButton>
+                    <SendConfirm label={letter.emailsSent > 0 ? "Send again" : "Send email"} disabled={letter.blocked || !canSend}>
                       {letter.inBulk === null ? null : (
                         <SubmitButton name="intent" value="queue" variant="secondary" pendingLabel="Saving" disabled={letter.blocked}>
                           <ListPlus className="size-4" aria-hidden />
                           {letter.inBulk ? "Update bulk list email" : "Add to bulk list"}
                         </SubmitButton>
                       )}
-                    </div>
+                    </SendConfirm>
                     </div>
                     </Collapse>
                   </>

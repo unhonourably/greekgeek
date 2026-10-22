@@ -1,10 +1,10 @@
 "use client";
 
-import { Send } from "lucide-react";
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms";
 import { Field, Input, Textarea } from "@/components/ui";
 import { fieldError, type ActionState } from "@/lib/action-state";
 import { ORGANIZATIONS, ROLES } from "@/lib/outreach";
+import { SendConfirm } from "./send-confirm";
 
 type FormAction = (state: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -97,10 +97,7 @@ export function SendForm({ action, subject, body, to, from, replyTo, label, disa
           <Field label="Message" htmlFor="send-body">
             <Textarea id="send-body" name="body" defaultValue={body} className={bodyClassName ?? "min-h-[28rem] font-sans text-[13px] leading-relaxed"} />
           </Field>
-          <SubmitButton pendingLabel="Sending" disabled={disabled}>
-            <Send className="size-4" aria-hidden />
-            {label}
-          </SubmitButton>
+          <SendConfirm label={label} disabled={disabled} />
         </>
       )}
     </ActionForm>

@@ -1,4 +1,6 @@
+import Link from "next/link";
 import {
+  ArrowRight,
   BadgeCheck,
   BedDouble,
   CalendarCheck,
@@ -11,20 +13,14 @@ import {
   UserRoundSearch,
   UsersRound,
 } from "lucide-react";
-import { Suspense } from "react";
-import { DuesExample, FeeCalculator, PricingEstimate } from "@/components/fee-calculator";
-import { ProductTour } from "@/components/product-tour";
+import { ChatDemo } from "@/components/feature-demos/chat";
 import { ButtonLink } from "@/components/ui";
-import { ESTIMATE_DEFAULTS, readEstimateParams, type EstimateInput } from "@/lib/estimate";
-import { formatBps } from "@/lib/fees";
-import { formatCents } from "@/lib/money";
-import { getPublishedPricing } from "@/lib/pricing";
 
 const modules = [
   { icon: HandCoins, title: "Dues and payments", body: "Assess dues, offer installment plans, record cash and checks, issue credits, and accept card or bank payments through Stripe." },
   { icon: ReceiptText, title: "An auditable ledger", body: "Every charge, payment, fee, refund, and dispute is a balanced ledger entry. Treasurers can reconcile against Stripe and hand off clean books." },
   { icon: UsersRound, title: "Member records", body: "Profiles, member classes, officer history, and a searchable directory with privacy controls each member sets for themselves." },
-  { icon: MessagesSquare, title: "Chapter chat", body: "Channels, direct messages, threads, mentions, and moderation tools, with membership tied to roles so access updates itself." },
+  { icon: MessagesSquare, title: "Chapter chat", body: "Channels, direct messages, threads, mentions, and moderation tools. Channels can fill themselves from membership, officer roles, or alumni status." },
   { icon: CalendarCheck, title: "Events and attendance", body: "RSVPs, capacity limits, QR check-in, required-attendance tracking, and corrections with a reason on record." },
   { icon: UserRoundSearch, title: "Recruitment", body: "A pipeline for prospects with stages, assignments, follow-ups, and notes that can be restricted to recruitment leadership." },
   { icon: ClipboardList, title: "Standards and operations", body: "Policy acknowledgments, training, confidential incident reports, philanthropy hours, and budgets." },
@@ -32,23 +28,18 @@ const modules = [
   { icon: BadgeCheck, title: "Verified chapters", body: "Every chapter is reviewed before it can collect money or invite members, so the account you join is the real one." },
 ];
 
-export default function HomePage({ searchParams }: PageProps<"/">) {
+const jumps = [
+  { icon: HandCoins, label: "Dues and installment plans", href: "/features#dues" },
+  { icon: ReceiptText, label: "The ledger", href: "/features#ledger" },
+  { icon: MessagesSquare, label: "Chapter chat", href: "/features#chat" },
+  { icon: CalendarCheck, label: "Events and check-in", href: "/features#events" },
+  { icon: UserRoundSearch, label: "Recruitment pipeline", href: "/features#recruitment" },
+  { icon: UsersRound, label: "Roles and permissions", href: "/features#roles" },
+] as const;
+
+export default function HomePage() {
   return (
-    <Suspense fallback={<Home initial={ESTIMATE_DEFAULTS} />}>
-      <HomeWithParams searchParams={searchParams} />
-    </Suspense>
-  );
-}
-
-async function HomeWithParams({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
-  return <Home initial={readEstimateParams(await searchParams)} />;
-}
-
-async function Home({ initial }: { initial: EstimateInput }) {
-  const { rule, plan } = await getPublishedPricing();
-
-  return (
-    <PricingEstimate initial={initial}>
+    <>
       <section className="border-b border-line">
         <div className="mx-auto grid max-w-6xl gap-12 px-6 py-20 lg:grid-cols-[1.2fr_1fr] lg:py-28">
           <div>
@@ -56,17 +47,28 @@ async function Home({ initial }: { initial: EstimateInput }) {
               The chapter office, handled.
             </h1>
             <p className="mt-5 max-w-xl text-lg text-ink-2">
-              Collect dues with transparent pricing, keep books that reconcile, and run members, chat, events, and recruitment from one verified account.
+              Collect dues, keep books that reconcile, and run members, chat, events, and recruitment from one verified account.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <ButtonLink href="/signup">Register your chapter</ButtonLink>
-              <ButtonLink href="#calculator" variant="secondary">
-                Calculate your cost
-              </ButtonLink>
+              <ButtonLink href="/features" variant="secondary">See the features</ButtonLink>
             </div>
-            <p className="mt-4 text-[13px] text-ink-3">{formatCents(plan.priceCents)} per month per chapter. Members joining an existing chapter should use the invitation from their officers.</p>
+            <p className="mt-4 text-[13px] text-ink-3">Members joining an existing chapter should use the invitation from their officers.</p>
           </div>
-          <DuesExample rule={rule} />
+          <div className="self-center rounded-lg border border-line bg-surface">
+            <p className="border-b border-line px-5 py-3 text-[13px] font-medium text-ink-2">Try any of these, no account needed</p>
+            <ul className="divide-y divide-line">
+              {jumps.map(({ icon: Icon, label, href }) => (
+                <li key={href}>
+                  <Link href={href} className="group flex items-center gap-3 px-5 py-3 text-sm text-ink transition-colors hover:bg-subtle">
+                    <Icon className="size-4 text-accent" aria-hidden />
+                    <span className="flex-1">{label}</span>
+                    <ArrowRight className="size-4 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -74,9 +76,12 @@ async function Home({ initial }: { initial: EstimateInput }) {
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="mb-10 max-w-2xl">
             <h2 className="font-serif text-2xl font-semibold tracking-tight">Try it before you sign up</h2>
-            <p className="mt-3 text-ink-2">These are the same screens officers and members use every week, filled with a sample chapter. Click around.</p>
+            <p className="mt-3 text-ink-2">This is a working copy of chapter chat, filled with a made-up sample chapter. Nothing you do here is saved.</p>
           </div>
-          <ProductTour />
+          <ChatDemo />
+          <div className="mt-8">
+            <ButtonLink href="/features" variant="secondary">Try the rest on the features page</ButtonLink>
+          </div>
         </div>
       </section>
 
@@ -90,6 +95,9 @@ async function Home({ initial }: { initial: EstimateInput }) {
               <p className="mt-1.5 text-sm text-ink-2">{body}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-12">
+          <ButtonLink href="/features" variant="secondary">See every feature in action</ButtonLink>
         </div>
       </section>
 
@@ -126,20 +134,14 @@ async function Home({ initial }: { initial: EstimateInput }) {
         </div>
       </section>
 
-      <section id="calculator" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-20">
-        <div className="text-center">
-          <h2 className="font-serif text-2xl font-semibold tracking-tight">Pricing you can explain at chapter meeting</h2>
-          <p className="mx-auto mt-3 max-w-xl text-ink-2">
-            {formatCents(plan.priceCents)} per month for the chapter, plus {formatBps(rule.platformFeeBps)} of each dues payment collected online. No platform fee on offline payments, credits, or balances that go unpaid.
-          </p>
-        </div>
-        <div className="mt-10">
-          <FeeCalculator rule={rule} subscriptionCents={plan.priceCents} />
-        </div>
-        <div className="mt-6 flex justify-center">
-          <ButtonLink href="/pricing" variant="secondary">See full pricing details</ButtonLink>
+      <section className="mx-auto max-w-6xl px-6 py-20 text-center">
+        <h2 className="font-serif text-2xl font-semibold tracking-tight">Ready when your chapter is</h2>
+        <p className="mx-auto mt-3 max-w-xl text-ink-2">Register, get verified, and invite your members. Questions first? We answer every message.</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <ButtonLink href="/signup">Register your chapter</ButtonLink>
+          <ButtonLink href="/contact" variant="secondary">Talk to us</ButtonLink>
         </div>
       </section>
-    </PricingEstimate>
+    </>
   );
 }

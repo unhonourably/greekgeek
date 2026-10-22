@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ListPlus, PenLine, Send } from "lucide-react";
+import { ListPlus, PenLine } from "lucide-react";
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms";
 import { Button, Field, Input, Textarea } from "@/components/ui";
 import { fieldError, type ActionState } from "@/lib/action-state";
 import { outreachEmail } from "@/lib/outreach";
 import { sendCustomOutreach } from "../letter-action";
+import { SendConfirm } from "../send-confirm";
 import { Collapse, SentPanel } from "../sent-panel";
 
 type Details = { full_name: string; organization: string; university: string };
@@ -75,17 +76,13 @@ function Fields({ state, from, replyTo, canSend, onAnother }: { state: ActionSta
       <Field label="Message" htmlFor="compose-body">
         <Textarea id="compose-body" name="body" value={body} onChange={(event) => { setBody(event.target.value); setEdited((current) => ({ ...current, body: true })); }} className="min-h-[28rem] font-sans text-[13px] leading-relaxed" />
       </Field>
-      <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton name="intent" value="send" pendingLabel="Sending" disabled={!canSend}>
-          <Send className="size-4" aria-hidden />
-          Send email
-        </SubmitButton>
+      <SendConfirm label="Send email" disabled={!canSend}>
         <SubmitButton name="intent" value="queue" variant="secondary" pendingLabel="Saving">
           <ListPlus className="size-4" aria-hidden />
           Add to bulk list
         </SubmitButton>
         {edited.subject || edited.body ? <button type="button" onClick={reset} className="text-sm text-ink-3 hover:text-ink">Reset to template</button> : null}
-      </div>
+      </SendConfirm>
       </div>
       </Collapse>
     </>

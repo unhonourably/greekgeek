@@ -10,6 +10,7 @@ describe("outreach email", () => {
     expect(body).toContain("• Dues collection and chapter finances\n• Member directories and officer management");
     expect(body).toContain("Tell us about your chapter: https://greekgeek.org/intro/tcu");
     expect(body).toContain("you can also text me at (636) 515-1794 to set up a meeting");
+    expect(body).toContain("Feel free to just reply to this email");
     expect(body.endsWith("Best,\nAmare Carey\nCo-Founder, GreekGeek\nEmail: amare@greekgeek.org (any time, 7 days a week)\nText: (636) 515-1794 (any time of day, 7 days a week)\nCall: (636) 515-1794 (10am to 10pm Central, 7 days a week)\nhttps://greekgeek.org")).toBe(true);
   });
 
