@@ -61,6 +61,13 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
             <Link href="/legal/terms" className="hover:text-ink">Terms</Link>
             <Link href="/legal/privacy" className="hover:text-ink">Privacy</Link>
           </nav>
+          <nav aria-label="Social" className="flex gap-4">
+            {brand.socials.map((social) => (
+              <a key={social.name} href={social.href} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
+                {social.name}
+              </a>
+            ))}
+          </nav>
         </div>
       </footer>
     </div>

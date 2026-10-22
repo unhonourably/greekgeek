@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { brand } from "@/config/brand";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = { title: "Contact" };
@@ -20,6 +21,13 @@ export default function ContactPage() {
           <dd className="mt-1 text-sm font-medium text-ink">owen@greekgeek.org</dd>
         </div>
       </dl>
+      <nav aria-label="Social" className="mt-6 flex gap-4 text-sm">
+        {brand.socials.map((social) => (
+          <a key={social.name} href={social.href} target="_blank" rel="noopener noreferrer" className="text-ink-2 underline-offset-4 hover:text-ink hover:underline">
+            {social.name}
+          </a>
+        ))}
+      </nav>
       <ContactForm />
     </div>
   );
