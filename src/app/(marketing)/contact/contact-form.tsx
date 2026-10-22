@@ -6,7 +6,7 @@ import { sendContact } from "./actions";
 
 export function ContactForm() {
   return (
-    <ActionForm action={sendContact} className="mt-10 space-y-4">
+    <ActionForm action={sendContact} className="space-y-4">
       {(state) => (
         <>
           <FormMessage state={state} />

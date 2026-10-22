@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/brand";
+import { SocialIcon } from "@/components/social-icon";
 import { Avatar, personName } from "@/components/people";
 import { ButtonLink } from "@/components/ui";
 import { brand } from "@/config/brand";
@@ -63,7 +64,8 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
           </nav>
           <nav aria-label="Social" className="flex gap-4">
             {brand.socials.map((social) => (
-              <a key={social.name} href={social.href} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
+              <a key={social.name} href={social.href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink">
+                <SocialIcon name={social.name} />
                 {social.name}
               </a>
             ))}

@@ -10,5 +10,5 @@ export const brand = {
     { name: "X", href: "https://x.com/GreekGeekApp" },
     { name: "TikTok", href: "https://www.tiktok.com/@greekgeekapp" },
     { name: "Instagram", href: "https://www.instagram.com/greekgeekapp/" },
-  ],
+  ] as const,
 };
