@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SubmitButton } from "@/components/forms";
-import { ChevronDown, PenLine, Star } from "lucide-react";
+import { ChevronDown, MailCheck, PenLine, Star } from "lucide-react";
 import { RECOMMENDED_DOMAINS, RECOMMENDED_NAMES, RECOMMENDED_SCHOOLS, pickCampus } from "@/lib/recommended-schools";
 import { Badge, ButtonLink, Input, Notice, PageHeader, Stat, StatGrid } from "@/components/ui";
 import { requireStaff } from "@/lib/auth";
@@ -11,8 +11,24 @@ import { SchoolPhoto } from "./school-photo";
 const STATES = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"];
 const PAGE_SIZE = 24;
 
+export const maxDuration = 60;
+
 type School = { id: string; name: string; city: string | null; state: string | null; email_domains: string[] };
 type Research = { university_id: string; image_url: string | null; research_status: string; chapters_found: number; emails_found: number; facts_found: number };
+type Reach = { people: number; replied: boolean };
+
+function ReachBadge({ reach, solid }: { reach: Reach | null; solid?: boolean }) {
+  if (!reach) return null;
+  const label = reach.replied ? "Replied" : "Emailed";
+  return (
+    <span title={`${reach.people} ${reach.people === 1 ? "person" : "people"} emailed${reach.replied ? ", with a reply" : ""}`}>
+      <Badge tone={reach.replied ? "positive" : "accent"} className={solid ? "bg-canvas/90 shadow-sm shadow-black/40 backdrop-blur" : undefined}>
+        <MailCheck className="mr-1 inline size-3" aria-hidden />
+        {label}{reach.people > 1 ? ` · ${reach.people}` : ""}
+      </Badge>
+    </span>
+  );
+}
 
 function hrefFor(page: number, q: string, state: string): string {
   const params = new URLSearchParams();
@@ -74,6 +90,21 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
     ? new Map((((await supabase.from("university_outreach").select("university_id, image_url, research_status, chapters_found, emails_found, facts_found").in("university_id", pickedIds)).data ?? []) as Research[]).map((row) => [row.university_id, row]))
     : new Map<string, Research>();
   const bulkCount = (await supabase.from("outreach_contacts").select("id", { count: "exact", head: true }).not("bulk_added_at", "is", null)).count ?? 0;
+  const { data: emailedData } = await supabase.from("outreach_contacts").select("university_id, university, replies").gt("emails_sent", 0).limit(20000);
+  const emailedById = new Map<string, Reach>();
+  const emailedByName = new Map<string, Reach>();
+  for (const row of (emailedData ?? []) as Array<{ university_id: string | null; university: string; replies: number }>) {
+    const target = row.university_id ? emailedById : emailedByName;
+    const key = row.university_id ?? row.university.trim().toLowerCase();
+    const current = target.get(key) ?? { people: 0, replied: false };
+    target.set(key, { people: current.people + 1, replied: current.replied || row.replies > 0 });
+  }
+  const reachOf = (school: { id: string; name: string }): Reach | null => {
+    const byId = emailedById.get(school.id);
+    const byName = emailedByName.get(school.name.trim().toLowerCase());
+    if (!byId && !byName) return null;
+    return { people: (byId?.people ?? 0) + (byName?.people ?? 0), replied: Boolean(byId?.replied || byName?.replied) };
+  };
 
   return (
     <div className="space-y-6">
@@ -132,7 +163,10 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
                             <span className="block truncate text-sm text-ink">{school.name}</span>
                             <span className="block truncate text-[12px] text-ink-3">{[school.city, school.state].filter(Boolean).join(", ")}</span>
                           </span>
-                          {info?.research_status === "done" ? <Badge tone="positive">{info.emails_found} emails</Badge> : <Badge>New</Badge>}
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <ReachBadge reach={reachOf(school)} />
+                            {info?.research_status === "done" ? <Badge tone="positive">{info.emails_found} email{info.emails_found === 1 ? "" : "s"} found</Badge> : <Badge>New</Badge>}
+                          </span>
                         </Link>
                       </li>
                     );
@@ -153,7 +187,8 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
           return (
             <li key={school.id} className="overflow-hidden rounded-lg border border-line bg-surface">
               <Link href={`/admin/outreach/schools/${school.id}`} className="block">
-                <div className="aspect-[16/10] overflow-hidden bg-subtle">
+                <div className="relative aspect-[16/10] overflow-hidden bg-subtle">
+                  {reachOf(school) ? <span className="absolute left-2 top-2 z-10"><ReachBadge reach={reachOf(school)} solid /></span> : null}
                   <SchoolPhoto id={school.id} name={school.name} initialUrl={info?.image_url?.includes("/640px-") ? null : info?.image_url ?? null} load={loadSchoolPhoto} />
                 </div>
                 <div className="space-y-1 px-4 pt-3">
@@ -163,7 +198,7 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
                 </div>
               </Link>
               <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                {info?.research_status === "done" ? <Badge tone="positive">{info.chapters_found} chapters · {info.emails_found} emails</Badge> : info?.research_status === "failed" ? <Badge tone="danger">Read failed</Badge> : info?.research_status === "running" ? <Badge tone="warning">Reading</Badge> : <Badge>Not gathered</Badge>}
+                {info?.research_status === "done" ? <Badge tone="positive">{info.chapters_found} chapters · {info.emails_found} email{info.emails_found === 1 ? "" : "s"} found</Badge> : info?.research_status === "failed" ? <Badge tone="danger">Read failed</Badge> : info?.research_status === "running" ? <Badge tone="warning">Reading</Badge> : <Badge>Not gathered</Badge>}
                 <form action={gatherUniversity.bind(null, school.id)}>
                   <SubmitButton size="sm" variant="secondary" pendingLabel="Reading the site" disabled={migrationMissing}>{info?.research_status === "done" ? "Gather again" : "Gather info"}</SubmitButton>
                 </form>

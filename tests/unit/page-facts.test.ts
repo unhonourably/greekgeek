@@ -12,6 +12,11 @@ const html = `
   </body></html>
 `;
 
+function cloudflare(email: string): string {
+  const key = 0x5a;
+  return [key, ...[...email].map((char) => char.charCodeAt(0) ^ key)].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 describe("greek life page facts", () => {
   it("keeps quoted figures and school emails, and drops the rest", () => {
     const findings = extractFindings(html, "https://www.tcu.edu/greek", ["tcu.edu"], true);
@@ -38,6 +43,27 @@ describe("greek life page facts", () => {
     const marketing = "<p>An All-Inclusive Experience. $0 Cost for students to attend sporting events on campus.</p><p>Personalized attention. 1/2 of classes have fewer than 30 students.</p><p>A nationally-ranked academic community in the Big 12.</p>";
     const findings = extractFindings(marketing, "https://www.tcu.edu/", ["tcu.edu"], false);
     expect(findings).toEqual([]);
+  });
+
+  it("reads emails hidden behind links, protection and spelled-out forms", () => {
+    const page = `
+      <div class="staff"><h3>Preston Kell</h3><p>Coordinator, Interfraternity Council</p><a href="mailto:pkell@clemson.edu?subject=Hi">Email</a></div>
+      <div class="staff"><h3>Rachel Weise</h3><p>Graduate Assistant</p><a href="/cdn-cgi/l/email-protection#${cloudflare("rweise@clemson.edu")}">[email&#160;protected]</a></div>
+      <p>Panhellenic: panhellenic [at] clemson [dot] edu</p>
+      <p>Office: greek&#64;clemson.edu</p>
+      <p>Help desk: ithelp@clemson.edu</p>
+      <p>Alpha Omega Epsilon <a href="mailto:bama.aoe@gmail.com">bama.aoe@gmail.com</a></p>
+      <p>Random <a href="mailto:someone@gmail.com">someone@gmail.com</a></p>
+    `;
+    const emails = extractFindings(page, "https://www.clemson.edu/fsl/contact", ["clemson.edu"], true).filter((finding) => finding.kind === "email");
+    const byEmail = new Map(emails.map((finding) => [finding.title, finding.detail]));
+    expect(byEmail.get("pkell@clemson.edu")).toBe("Coordinator · Interfraternity Council · Preston Kell");
+    expect(byEmail.get("rweise@clemson.edu")).toMatch(/^Graduate Assistant · .+ · Rachel Weise$/);
+    expect(byEmail.has("panhellenic@clemson.edu")).toBe(true);
+    expect(byEmail.has("greek@clemson.edu")).toBe(true);
+    expect(byEmail.get("bama.aoe@gmail.com")).toBe("Greek life office · Alpha Omega Epsilon");
+    expect(byEmail.has("ithelp@clemson.edu")).toBe(false);
+    expect(byEmail.has("someone@gmail.com")).toBe(false);
   });
 
   it("only follows the school's own site", () => {

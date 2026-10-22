@@ -1,6 +1,6 @@
 import "server-only";
 import { isGreekOrgName } from "@/lib/greek-orgs";
-import { extractFindings, fraternityCountQuote, looksGreek, mergeFindings, pageAnchors, pageLinks, pageTitle, sameSchool, type Finding } from "@/lib/page-facts";
+import { extractFindings, fraternityCountQuote, looksGreek, mergeFindings, pageAnchors, pageLinks, pageTitle, PERSONAL_DOMAINS, sameSchool, usableEmail, type Finding } from "@/lib/page-facts";
 
 const UA = "GreekGeek/1.0 (+https://greekgeek.org)";
 
@@ -33,8 +33,6 @@ async function readPage(url: string, fetchImpl: Fetcher, signal: AbortSignal): P
   return { html, finalUrl: response.url || url };
 }
 
-const SKIP_EMAIL = /^(noreply|no-reply|donotreply|do-not-reply|webmaster|postmaster|privacy|example|sentry|wix|wordpress)/i;
-
 function canonical(href: string, domain: string): string | null {
   try {
     const url = new URL(href);
@@ -51,8 +49,11 @@ function canonical(href: string, domain: string): string | null {
 
 function linkScore(url: URL, text: string, fromGreek: boolean): number {
   if (url.hostname.startsWith("engage.")) return looksGreek(`${url.href} ${text}`) ? 50 : 0;
-  if (looksGreek(`${url.href} ${text}`)) return 50;
-  if (fromGreek && /\/(about|councils?|chapters?|contact|recruit|members?)(\/|$)/i.test(url.pathname)) return 40;
+  const contactish = /\/(contact|contact-us|staff|our-staff|our-team|team|meet-the-team|meet-our-staff|leadership|officers|executive-board|exec-board|board|council-officers|directory|people)(\/|$)/i.test(url.pathname)
+    || /^(contact( us)?|staff|our staff|meet (the|our) (team|staff)|officers|executive board|council officers|leadership)$/i.test(text.trim());
+  if (looksGreek(`${url.href} ${text}`)) return contactish ? 55 : 50;
+  if (fromGreek && contactish) return 45;
+  if (fromGreek && /\/(about|councils?|chapters?|recruit|members?)(\/|$)/i.test(url.pathname)) return 40;
   if (/\/(student-life|campus-life|student-affairs|get-involved|involvement|organizations)(\/|$)/i.test(url.pathname)) return 20;
   if (/\/[^/]*a-z$/i.test(url.pathname) || /\/(?:atoz|a-to-z|directory)$/i.test(url.pathname)) return 18;
   if (url.hostname.startsWith("getinvolved.") || url.hostname.startsWith("fsl.")) return 20;
@@ -78,10 +79,10 @@ function directoryLetters(pageUrl: string, anchors: { href: string; text: string
   return [...new Set(letters)].slice(0, 30);
 }
 
-function schoolEmail(email: string, domains: string[]): boolean {
+function chapterEmail(email: string, domains: string[]): boolean {
   const domain = email.split("@")[1]?.toLowerCase() ?? "";
-  if (!domain || SKIP_EMAIL.test(email.split("@")[0] ?? "")) return false;
-  return domains.some((item) => domain === item || domain.endsWith(`.${item}`));
+  if (!domain || !usableEmail(email)) return false;
+  return PERSONAL_DOMAINS.has(domain) || domains.some((item) => domain === item || domain.endsWith(`.${item}`));
 }
 
 function personName(value: unknown, email: string): string | null {
@@ -101,7 +102,7 @@ function engageHosts(html: string, base: string, domain: string): string[] {
     try {
       const url = new URL(href);
       if (url.protocol !== "https:" || !sameSchool(url.hostname, domain)) continue;
-      if (url.hostname.startsWith("engage.")) hosts.add(url.origin);
+      if (url.hostname.startsWith("engage.") || (!url.hostname.startsWith("www.") && /^\/organizations\/?$/i.test(url.pathname))) hosts.add(url.origin);
     } catch {
       continue;
     }
@@ -187,7 +188,7 @@ async function readEngage(origin: string, domain: string, domains: string[], fet
       const about = `${summary} ${description}`;
       findings.push(...extractFindings(about, source, domains, true).filter((finding) => finding.kind !== "chapter" && finding.kind !== "email"));
       const email = typeof row?.email === "string" ? row.email.trim().toLowerCase() : "";
-      if (!schoolEmail(email, domains)) continue;
+      if (!chapterEmail(email, domains)) continue;
       const name = personName(row?.primaryContact, email);
       findings.push({
         kind: "email",
@@ -321,7 +322,8 @@ export async function readGreekLife(domains: string[], fetchImpl: Fetcher = fetc
   for (const loc of await sitemapGreek(new URL(home.finalUrl).origin, domain, fetchImpl, deadline)) consider(loc, "", 1, false);
 
   let opened = 0;
-  while (queue.length > 0 && opened < 14 && Date.now() < deadline) {
+  const crawlUntil = deadline - Math.min(15_000, budgetMs / 3);
+  while (queue.length > 0 && opened < 30 && Date.now() < crawlUntil) {
     queue.sort((a, b) => b.score - a.score);
     const batch = queue.splice(0, 4);
     const read = await Promise.all(batch.map(async (job) => ({ job, page: await take(job.url, job.score >= 50) })));
@@ -334,7 +336,7 @@ export async function readGreekLife(domains: string[], fetchImpl: Fetcher = fetc
       const fromGreek = job.score >= 50 || looksGreek(page.finalUrl) || looksGreek(pageTitle(page.html) ?? "");
       const anchors = pageAnchors(page.html, page.finalUrl);
       const letters = job.depth <= 2 ? directoryLetters(page.finalUrl, anchors) : [];
-      for (let i = 0; i < letters.length && Date.now() < deadline; i += 6) {
+      for (let i = 0; i < letters.length && Date.now() < crawlUntil; i += 6) {
         const lists = await Promise.all(letters.slice(i, i + 6).map((letter) => harvest(letter)));
         for (const list of lists) for (const anchor of list) consider(anchor.href, anchor.text, job.depth + 1, false);
       }
@@ -342,7 +344,7 @@ export async function readGreekLife(domains: string[], fetchImpl: Fetcher = fetc
     }
   }
 
-  for (const origin of [...hosts].slice(0, 1)) {
+  for (const origin of [...hosts].slice(0, 2)) {
     if (Date.now() > deadline) break;
     try {
       const extra = await readEngage(origin, domain, domains, fetchImpl, deadline);
@@ -362,7 +364,7 @@ export async function readGreekLife(domains: string[], fetchImpl: Fetcher = fetc
     if (!existing || (!existing.ok && page.ok)) unique.set(page.url, page);
   }
   return {
-    pages: [...unique.values()].slice(0, 30),
+    pages: [...unique.values()].slice(0, 40),
     findings,
     error: findings.length === 0 ? "The site opened, but its public pages did not list chapters, dues, housing, or a Greek life email." : null,
   };

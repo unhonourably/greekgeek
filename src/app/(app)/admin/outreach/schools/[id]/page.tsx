@@ -14,6 +14,8 @@ import { CopyLink } from "../../copy-link";
 import { SchoolPhoto } from "../../school-photo";
 import { WriteLetters } from "../../write-dialog";
 
+export const maxDuration = 60;
+
 type School = { id: string; name: string; city: string | null; state: string | null; email_domains: string[] };
 type Outreach = {
   image_url: string | null;
