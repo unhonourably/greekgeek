@@ -115,6 +115,9 @@ Copy `.env.example` to `.env` and fill in real values. Never commit `.env`.
 | `DEV_SKIP_EMAIL_CONFIRMATION` | no | no | `true` creates sign-ups as already confirmed and signs them in. Ignored when `NODE_ENV=production` |
 | `RESEND_API_KEY` | for email | **no** | Without it, emails stay queued and are not sent |
 | `EMAIL_FROM` | for email | no | Sender address, for example `Chapter <no-reply@yourdomain.com>` |
+| `OUTREACH_FROM` | optional | no | Sender for outreach emails at `/admin/outreach`, for example `Amare Carey <amare@greekgeek.org>`. Falls back to `EMAIL_FROM` |
+| `OUTREACH_REPLY_TO` | optional | no | Where outreach replies go. Defaults to `amare@greekgeek.org` |
+| `RESEND_WEBHOOK_SECRET` | optional | **no** | Signing secret of the Resend webhook at `/api/resend/webhook`. Records delivery, opens, clicks, bounces, and inbound replies |
 
 Generate secrets with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
 

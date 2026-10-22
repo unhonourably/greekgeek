@@ -103,6 +103,26 @@
   }
 }
 
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes typing-dot {
   0%,
   60%,
@@ -182,6 +202,14 @@
 
 @utility fade-up {
   animation: fade-up 200ms ease-out both;
+}
+
+@utility veil-in {
+  animation: veil-in 160ms ease-out both;
+}
+
+@utility dialog-in {
+  animation: dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @utility step-in {

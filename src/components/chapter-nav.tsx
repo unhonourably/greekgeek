@@ -18,6 +18,7 @@ import {
   Landmark,
   LayoutDashboard,
   ClipboardList,
+  Mail,
   Megaphone,
   MessagesSquare,
   Receipt,
@@ -57,6 +58,7 @@ const ICONS = {
   pricing: Tag,
   audit: ScrollText,
   closures: ClipboardList,
+  outreach: Mail,
 } satisfies Record<string, LucideIcon>;
 
 export type NavItem = { key: keyof typeof ICONS; label: string; href: string; badge?: number; exact?: boolean; tag?: string };

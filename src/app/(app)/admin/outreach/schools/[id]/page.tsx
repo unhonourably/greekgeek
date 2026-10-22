@@ -1,0 +1,204 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { SubmitButton } from "@/components/forms";
+import { Card, CardBody, CardHeader, Notice, PageHeader } from "@/components/ui";
+import { requireStaff } from "@/lib/auth";
+import { serverEnv } from "@/lib/env";
+import { formatDateTime } from "@/lib/format";
+import { OUTREACH_ZONE, outreachEmail } from "@/lib/outreach";
+import type { Finding } from "@/lib/page-facts";
+import { createClient } from "@/lib/supabase/server";
+import { ensureIntroCode, gatherUniversity, loadSchoolPhoto, sendOutreach } from "../../actions";
+import { SchoolPhoto } from "../../school-photo";
+import { WriteLetters } from "../../write-dialog";
+
+type School = { id: string; name: string; city: string | null; state: string | null; email_domains: string[] };
+type Outreach = {
+  image_url: string | null;
+  research_status: string;
+  research_finished_at: string | null;
+  research_error: string | null;
+  pages: Array<{ url: string; ok: boolean; title: string | null }>;
+  findings: Finding[];
+  chapters_found: number;
+  emails_found: number;
+  facts_found: number;
+  intro_code: string | null;
+};
+type Contact = { id: string; full_name: string | null; organization: string; role: string; email: string; emails_sent: number; replies: number; do_not_contact: boolean };
+type ResponseRow = {
+  id: string;
+  full_name: string;
+  role: string;
+  organization: string;
+  council: string | null;
+  member_count: number | null;
+  in_house: number | null;
+  out_of_house: number | null;
+  dues: string | null;
+  email: string;
+  phone: string | null;
+  prefer_email: boolean;
+  prefer_text: boolean;
+  prefer_call: boolean;
+  best_time: string | null;
+  interest: string;
+  help: string[];
+  notes: string | null;
+  created_at: string;
+};
+
+const GROUPS: Array<{ kind: Finding["kind"]; title: string; empty: string }> = [
+  { kind: "chapter", title: "Chapters and councils", empty: "No chapter or council names were on the pages we read." },
+  { kind: "members", title: "How big", empty: "No membership numbers were on the pages we read." },
+  { kind: "housing", title: "In house and out of house", empty: "No housing numbers were on the pages we read." },
+  { kind: "dues", title: "Dues", empty: "No dues figures were on the pages we read. Nothing here is an estimate." },
+  { kind: "national", title: "National size", empty: "The school's pages did not give a national membership total." },
+];
+
+const INTEREST: Record<string, string> = { demo: "Wants a demo", learn_more: "Wants more information", later: "Not right now" };
+
+export default async function SchoolPage({ params }: PageProps<"/admin/outreach/schools/[id]">) {
+  await requireStaff([]);
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: schoolData } = await supabase.from("universities").select("id, name, city, state, email_domains").eq("id", id).maybeSingle();
+  if (!schoolData) notFound();
+  const school = schoolData as School;
+  const [{ data: outreachData, error: outreachError }, { data: contactData }, { data: responseData }] = await Promise.all([
+    supabase.from("university_outreach").select("image_url, research_status, research_finished_at, research_error, pages, findings, chapters_found, emails_found, facts_found, intro_code").eq("university_id", id).maybeSingle(),
+    supabase.from("outreach_contacts").select("id, full_name, organization, role, email, emails_sent, replies, do_not_contact").eq("university_id", id).order("organization"),
+    supabase.from("intro_responses").select("id, full_name, role, organization, council, member_count, in_house, out_of_house, dues, email, phone, prefer_email, prefer_text, prefer_call, best_time, interest, help, notes, created_at").eq("university_id", id).order("created_at", { ascending: false }),
+  ]);
+  if (outreachError && /does not exist|schema cache/i.test(outreachError.message)) {
+    return <Notice tone="danger">The university outreach migration is not on this database yet. Run npx supabase db push.</Notice>;
+  }
+  const outreach = (outreachData ?? null) as Outreach | null;
+  const contacts = (contactData ?? []) as Contact[];
+  const responses = (responseData ?? []) as ResponseRow[];
+  const code = outreach?.intro_code ?? await ensureIntroCode(id);
+  const introUrl = `${serverEnv.appUrl()}/intro/${code}`;
+  const findings = outreach?.findings ?? [];
+  const from = serverEnv.outreachFrom() ?? serverEnv.emailFrom();
+  const drafts = contacts.map((contact) => {
+    const mail = outreachEmail({ full_name: contact.full_name, organization: contact.organization, university: school.name }, introUrl);
+    return {
+      id: contact.id,
+      name: contact.full_name ?? contact.organization,
+      hasName: Boolean(contact.full_name),
+      role: contact.role,
+      organization: contact.organization,
+      email: contact.email,
+      emailsSent: contact.emails_sent,
+      replies: contact.replies,
+      blocked: contact.do_not_contact,
+      subject: mail.subject,
+      body: mail.body,
+    };
+  });
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow={<Link href="/admin/outreach" className="hover:text-ink">Universities</Link>}
+        title={school.name}
+        description={[school.city, school.state].filter(Boolean).join(", ") || "United States"}
+      />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="overflow-hidden rounded-lg border border-line bg-surface">
+          <div className="aspect-[16/7] bg-subtle">
+            <SchoolPhoto id={school.id} name={school.name} initialUrl={outreach?.image_url?.includes("/640px-") ? null : outreach?.image_url ?? null} load={loadSchoolPhoto} />
+          </div>
+          <div className="flex flex-wrap items-end justify-between gap-3 p-4">
+            <div>
+              <p className="text-[13px] text-ink-3">Student email</p>
+              <ul className="mt-1 space-y-0.5">
+                {(school.email_domains ?? []).length === 0 ? <li className="text-sm text-ink-3">No domain on file</li> : school.email_domains.map((domain) => (
+                  <li key={domain} className="font-mono text-sm text-ink">name@{domain}</li>
+                ))}
+              </ul>
+            </div>
+            <form action={gatherUniversity.bind(null, school.id)}>
+              <SubmitButton pendingLabel="Reading the site">{outreach?.research_status === "done" ? "Gather again" : "Gather info"}</SubmitButton>
+            </form>
+          </div>
+        </div>
+        <Card>
+          <CardHeader title="Chapter form" description="This link goes in the email. It is only for this school." />
+          <CardBody className="space-y-2">
+            <a href={introUrl} className="break-all text-sm text-accent underline-offset-2 hover:underline">{introUrl}</a>
+            <p className="text-[13px] text-ink-3">{responses.length} response{responses.length === 1 ? "" : "s"} so far.</p>
+          </CardBody>
+        </Card>
+      </div>
+
+      {outreach?.research_status === "failed" ? <Notice tone="danger">{outreach.research_error ?? "The read failed."}</Notice> : null}
+      {outreach?.research_status === "done" && outreach.research_error ? <Notice>{outreach.research_error}</Notice> : null}
+      {outreach?.research_finished_at ? <p className="text-[13px] text-ink-3">Last read {formatDateTime(outreach.research_finished_at, OUTREACH_ZONE)} · {outreach.pages.filter((page) => page.ok).length} pages opened · {outreach.chapters_found} chapters · {outreach.emails_found} emails · {outreach.facts_found} figures</p> : <p className="text-sm text-ink-3">Nothing has been read yet. Gather info reads only the public site for this university. It does not invent dues or membership numbers.</p>}
+
+      {GROUPS.map((group) => {
+        const rows = findings.filter((finding) => finding.kind === group.kind);
+        return (
+          <Card key={group.kind}>
+            <CardHeader title={group.title} />
+            {rows.length === 0 ? <CardBody><p className="text-sm text-ink-3">{outreach?.research_status === "done" ? group.empty : "Not gathered yet."}</p></CardBody> : (
+              <ul className="divide-y divide-line">
+                {rows.map((finding, index) => (
+                  <li key={`${finding.title}-${index}`} className="px-5 py-3">
+                    <p className="font-medium text-ink">{finding.title}</p>
+                    {finding.quote ? <p className="mt-1 text-sm text-ink-2">{finding.quote}</p> : null}
+                    <a href={finding.source_url} target="_blank" rel="noreferrer" className="mt-1 block truncate text-[12px] text-accent underline-offset-2 hover:underline">{finding.source_url}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        );
+      })}
+
+      {outreach && outreach.pages.length > 0 ? (
+        <details className="rounded-lg border border-line bg-surface px-5 py-3 text-sm">
+          <summary className="cursor-pointer text-ink-2">Pages opened</summary>
+          <ul className="mt-3 space-y-1">
+            {outreach.pages.map((page) => (
+              <li key={page.url} className="truncate">
+                <a href={page.url} target="_blank" rel="noreferrer" className={page.ok ? "text-ink-2 hover:text-ink" : "text-danger"}>{page.title || page.url}</a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      <Card>
+        <CardHeader title="Emails" description="Addresses found on the school's Greek life pages. Write from here, or open one for the full send history." />
+        {drafts.length === 0 ? <CardBody><p className="text-sm text-ink-3">{outreach?.research_status === "done" ? "No Greek life email was on the pages we read." : "Gather info to look for emails."}</p></CardBody> : (
+          <WriteLetters drafts={drafts} send={Object.fromEntries(drafts.map((draft) => [draft.id, sendOutreach.bind(null, draft.id)]))} from={from} replyTo={serverEnv.outreachReplyTo()} canSend={Boolean(serverEnv.resendApiKey())} />
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader title="Form responses" description="What chapters sent back from the link in the email." />
+        {responses.length === 0 ? <CardBody><p className="text-sm text-ink-3">No one has filled out the form yet.</p></CardBody> : (
+          <ul className="divide-y divide-line">
+            {responses.map((response) => (
+              <li key={response.id} className="space-y-1 px-5 py-4 text-sm">
+                <p className="font-medium text-ink">{response.full_name} · {response.role}</p>
+                <p className="text-ink-2">{response.organization}{response.council ? ` · ${response.council}` : ""} · {formatDateTime(response.created_at, OUTREACH_ZONE)}</p>
+                <p className="text-ink-2">{INTEREST[response.interest] ?? response.interest}. Members {response.member_count ?? "not given"}{response.in_house != null ? `, ${response.in_house} in house` : ""}{response.out_of_house != null ? `, ${response.out_of_house} out of house` : ""}{response.dues ? `. Dues: ${response.dues}` : ""}.</p>
+                <p className="text-ink-2">
+                  {response.email}
+                  {response.phone ? ` · ${response.phone}` : ""}
+                  {" · "}
+                  {[response.prefer_email ? "email" : null, response.prefer_text ? "text" : null, response.prefer_call ? "call" : null].filter(Boolean).join(", ")}
+                  {response.best_time ? ` · ${response.best_time}` : ""}
+                </p>
+                {response.help.length > 0 ? <p className="text-ink-3">Wants help with {response.help.join(", ")}.</p> : null}
+                {response.notes ? <p className="whitespace-pre-wrap text-ink-2">{response.notes}</p> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}

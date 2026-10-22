@@ -1,6 +1,7 @@
 import { BugReport } from "@/components/bug-report";
 import { ChapterNav, type NavGroup } from "@/components/chapter-nav";
 import { requireStaff, type StaffRole } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 
 const ROLE_LABEL: Record<StaffRole, string> = { admin: "Administrator", reviewer: "Reviewer", support: "Support", finance: "Finance" };
 
@@ -20,6 +21,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     });
   }
   if (role === "admin") {
+    const supabase = await createClient();
+    const { count } = await supabase.from("outreach_emails").select("id", { count: "exact", head: true }).eq("direction", "reply").is("read_at", null);
+    groups.push({ label: "Growth", items: [{ key: "outreach", label: "Outreach", href: "/admin/outreach", badge: count ?? 0 }] });
     groups.push({
       label: "Platform",
       items: [

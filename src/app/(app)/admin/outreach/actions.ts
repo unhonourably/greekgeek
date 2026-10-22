@@ -1,0 +1,278 @@
+"use server";
+
+import { randomBytes } from "node:crypto";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import type { ActionState } from "@/lib/action-state";
+import { requireStaff } from "@/lib/auth";
+import { sendEmail } from "@/lib/email";
+import { serverEnv } from "@/lib/env";
+import { parseContacts, zonedInputToIso } from "@/lib/outreach";
+import { readGreekLife } from "@/lib/university-research";
+import { photoSlot, usablePhoto, wikipediaPhoto } from "@/lib/university-photo";
+import { createClient } from "@/lib/supabase/server";
+
+function randomCode(): string {
+  return randomBytes(9).toString("base64url");
+}
+
+const contactSchema = z.object({
+  university: z.string().trim().min(2, "Enter the university.").max(160),
+  organization: z.string().trim().min(2, "Enter the council or office.").max(120),
+  role: z.string().trim().min(2, "Enter the role.").max(80),
+  full_name: z.string().trim().max(120).transform((value) => (value.length >= 2 ? value : null)),
+  email: z.string().trim().email("Enter a valid email address.").max(254),
+  source_url: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((value) => value === "" || /^https?:\/\//i.test(value), "Links must start with http:// or https://.")
+    .transform((value) => value || null),
+  notes: z.string().trim().max(4000).transform((value) => value || null),
+});
+
+function readContact(formData: FormData) {
+  return contactSchema.safeParse({
+    university: String(formData.get("university") ?? ""),
+    organization: String(formData.get("organization") ?? ""),
+    role: String(formData.get("role") ?? ""),
+    full_name: String(formData.get("full_name") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    source_url: String(formData.get("source_url") ?? ""),
+    notes: String(formData.get("notes") ?? ""),
+  });
+}
+
+function fieldErrors(error: z.ZodError): Record<string, string> {
+  return Object.fromEntries(error.issues.map((issue) => [String(issue.path[0]), issue.message]));
+}
+
+function duplicate(message: string | undefined): boolean {
+  return /duplicate|unique/i.test(message ?? "");
+}
+
+function refresh(id?: string, schoolId?: string | null) {
+  revalidatePath("/admin/outreach");
+  if (id) revalidatePath(`/admin/outreach/contacts/${id}`);
+  if (schoolId) revalidatePath(`/admin/outreach/schools/${schoolId}`);
+}
+
+export async function addContact(_: ActionState, formData: FormData): Promise<ActionState> {
+  const { user } = await requireStaff([]);
+  const parsed = readContact(formData);
+  if (!parsed.success) return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.from("outreach_contacts").insert({ ...parsed.data, created_by: user.id });
+  if (error) return { error: duplicate(error.message) ? "That email is already in your contacts." : "The contact could not be saved." };
+  refresh();
+  return { ok: true, message: `${parsed.data.email} added.` };
+}
+
+export async function importContacts(_: ActionState, formData: FormData): Promise<ActionState> {
+  const { user } = await requireStaff([]);
+  const { contacts, skipped } = parseContacts(String(formData.get("rows") ?? ""));
+  if (contacts.length === 0) return { error: "No usable rows. Each line needs at least a university and an email." };
+  if (contacts.length > 2000) return { error: "Import at most 2,000 rows at a time." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("outreach_contacts")
+    .upsert(contacts.map((contact) => ({ ...contact, created_by: user.id })), { onConflict: "email_normalized", ignoreDuplicates: true })
+    .select("id");
+  if (error) return { error: "The import could not be saved." };
+  const added = data?.length ?? 0;
+  const existing = contacts.length - added;
+  refresh();
+  const parts = [`${added} added`];
+  if (existing > 0) parts.push(`${existing} already in your contacts`);
+  if (skipped.length > 0) parts.push(`skipped line${skipped.length === 1 ? "" : "s"} ${skipped.slice(0, 12).join(", ")}${skipped.length > 12 ? "…" : ""}`);
+  return { ok: true, message: `${parts.join(", ")}.` };
+}
+
+export async function updateContact(id: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  await requireStaff([]);
+  const parsed = readContact(formData);
+  if (!parsed.success) return { error: "Check the highlighted fields.", fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.from("outreach_contacts").update(parsed.data).eq("id", id);
+  if (error) return { error: duplicate(error.message) ? "Another contact already uses that email." : "The contact could not be saved." };
+  refresh(id);
+  return { ok: true, message: "Contact saved." };
+}
+
+export async function setDoNotContact(id: string, value: boolean): Promise<void> {
+  await requireStaff([]);
+  const supabase = await createClient();
+  await supabase.from("outreach_contacts").update({ do_not_contact: value }).eq("id", id);
+  refresh(id);
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  await requireStaff([]);
+  const supabase = await createClient();
+  await supabase.from("outreach_contacts").delete().eq("id", id);
+  refresh();
+  redirect("/admin/outreach");
+}
+
+export async function sendOutreach(id: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  const { user } = await requireStaff([]);
+  const subject = String(formData.get("subject") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (subject.length < 2 || subject.length > 300) return { error: "Add a subject line." };
+  if (body.length < 20 || body.length > 50000) return { error: "The email body is empty or too long." };
+  if (!serverEnv.resendApiKey()) return { error: "Sending is off because RESEND_API_KEY is not set on the server." };
+  const supabase = await createClient();
+  const { data: contact } = await supabase.from("outreach_contacts").select("id, email, do_not_contact, university_id").eq("id", id).maybeSingle();
+  if (!contact) return { error: "This contact no longer exists." };
+  if (contact.do_not_contact) return { error: "This contact is marked do not contact." };
+  const { data: row, error } = await supabase
+    .from("outreach_emails")
+    .insert({ contact_id: id, direction: "sent", status: "sending", subject, body, to_email: contact.email, sent_by: user.id })
+    .select("id")
+    .single();
+  if (error || !row) return { error: "The email could not be recorded, so it was not sent." };
+  try {
+    const result = await sendEmail({
+      to: contact.email,
+      from: serverEnv.outreachFrom(),
+      replyTo: serverEnv.outreachReplyTo(),
+      subject,
+      text: body,
+      idempotencyKey: row.id,
+    });
+    if (!result.delivered) throw new Error("Email delivery is not configured.");
+    await supabase.from("outreach_emails").update({ status: "sent", provider_id: result.id, occurred_at: new Date().toISOString() }).eq("id", row.id);
+  } catch (sendError) {
+    const message = sendError instanceof Error ? sendError.message : "Send failed";
+    await supabase.from("outreach_emails").update({ status: "failed", error: message.slice(0, 500) }).eq("id", row.id);
+    refresh(id, contact.university_id);
+    return { error: `Not sent: ${message}` };
+  }
+  refresh(id, contact.university_id);
+  return { ok: true, message: `Sent to ${contact.email}.` };
+}
+
+export async function logReply(id: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  const { user } = await requireStaff([]);
+  const at = zonedInputToIso(String(formData.get("occurred_at") ?? ""));
+  const body = String(formData.get("body") ?? "").trim();
+  if (!at) return { error: "Pick when the reply came in." };
+  if (new Date(at).getTime() > Date.now() + 5 * 60 * 1000) return { error: "That time is in the future." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("outreach_emails").insert({
+    contact_id: id,
+    direction: "reply",
+    status: "received",
+    subject: String(formData.get("subject") ?? "").trim().slice(0, 300),
+    body: body || "Reply logged by hand. No text was pasted.",
+    logged_by_hand: true,
+    sent_by: user.id,
+    occurred_at: at,
+    read_at: new Date().toISOString(),
+  });
+  if (error) return { error: "The reply could not be saved." };
+  refresh(id);
+  return { ok: true, message: "Reply logged." };
+}
+
+export async function ensureIntroCode(universityId: string): Promise<string> {
+  await requireStaff([]);
+  const supabase = await createClient();
+  const { data } = await supabase.from("university_outreach").select("intro_code").eq("university_id", universityId).maybeSingle();
+  if (data?.intro_code) return data.intro_code;
+  const code = randomCode();
+  if (!data) {
+    const { error } = await supabase.from("university_outreach").insert({ university_id: universityId, intro_code: code });
+    if (!error) return code;
+  }
+  const again = await supabase.from("university_outreach").select("intro_code").eq("university_id", universityId).maybeSingle();
+  if (again.data?.intro_code) return again.data.intro_code;
+  await supabase.from("university_outreach").update({ intro_code: code }).eq("university_id", universityId).is("intro_code", null);
+  return code;
+}
+
+export async function loadSchoolPhoto(universityId: string): Promise<string | null> {
+  await requireStaff([]);
+  const supabase = await createClient();
+  const { data: saved } = await supabase.from("university_outreach").select("image_url, image_checked_at").eq("university_id", universityId).maybeSingle();
+  const fresh = saved?.image_checked_at && Date.now() - new Date(saved.image_checked_at).getTime() < 7 * 24 * 60 * 60 * 1000;
+  if (fresh && saved.image_url && !saved.image_url.includes("/640px-")) return saved.image_url;
+  if (fresh && !saved.image_url) return null;
+  const { data: school } = await supabase.from("universities").select("name, city").eq("id", universityId).maybeSingle();
+  if (!school) return null;
+  let photo: { url: string; page: string } | null = null;
+  try {
+    photo = await photoSlot(async () => {
+      const found = await wikipediaPhoto(school.name, school.city);
+      if (!found || !(await usablePhoto(found.url))) return null;
+      return found;
+    });
+  } catch {
+    return saved?.image_url && !saved.image_url.includes("/640px-") ? saved.image_url : null;
+  }
+  const patch = { image_url: photo?.url ?? null, image_page: photo?.page ?? null, image_checked_at: new Date().toISOString() };
+  if (saved) await supabase.from("university_outreach").update(patch).eq("university_id", universityId);
+  else await supabase.from("university_outreach").insert({ university_id: universityId, intro_code: randomCode(), ...patch });
+  return photo?.url ?? null;
+}
+
+export async function gatherUniversity(universityId: string): Promise<void> {
+  await requireStaff([]);
+  const supabase = await createClient();
+  const { data: school } = await supabase.from("universities").select("id, name, email_domains").eq("id", universityId).maybeSingle();
+  if (!school) redirect("/admin/outreach");
+  const domains = ((school.email_domains ?? []) as string[]).map((domain) => domain.toLowerCase());
+  const { data: existing } = await supabase.from("university_outreach").select("research_status, research_started_at, intro_code").eq("university_id", universityId).maybeSingle();
+  const started = existing?.research_started_at ? new Date(existing.research_started_at).getTime() : 0;
+  if (existing?.research_status === "running" && Date.now() - started < 2 * 60 * 1000) redirect(`/admin/outreach/schools/${universityId}`);
+  const intro = existing?.intro_code ?? randomCode();
+  const running = { intro_code: intro, research_status: "running", research_started_at: new Date().toISOString(), research_error: null };
+  if (existing) await supabase.from("university_outreach").update(running).eq("university_id", universityId);
+  else await supabase.from("university_outreach").insert({ university_id: universityId, ...running });
+  try {
+    const result = await readGreekLife(domains);
+    const emails = result.findings.filter((finding) => finding.kind === "email");
+    for (const email of emails) {
+      const [role, organization, fullName] = (email.detail ?? "Greek life office · Greek life").split(" · ");
+      const contact = {
+        university: String(school.name).slice(0, 160),
+        university_id: universityId,
+        organization: (organization || "Greek life").slice(0, 120),
+        role: (role || "Greek life office").slice(0, 80),
+        full_name: fullName?.trim() ? fullName.trim().slice(0, 120) : null,
+        email: email.title,
+        source_url: email.source_url.slice(0, 500),
+        notes: email.quote?.slice(0, 4000) ?? null,
+      };
+      const inserted = await supabase.from("outreach_contacts").insert(contact);
+      if (inserted.error) await supabase.from("outreach_contacts").update(contact).eq("email_normalized", email.title.toLowerCase());
+    }
+    await supabase.from("university_outreach").update({
+      research_status: "done",
+      research_finished_at: new Date().toISOString(),
+      research_error: result.error,
+      pages: result.pages,
+      findings: result.findings,
+      chapters_found: result.findings.filter((finding) => finding.kind === "chapter").length,
+      emails_found: emails.length,
+      facts_found: result.findings.filter((finding) => finding.kind !== "chapter" && finding.kind !== "email").length,
+    }).eq("university_id", universityId);
+  } catch (error) {
+    await supabase.from("university_outreach").update({
+      research_status: "failed",
+      research_finished_at: new Date().toISOString(),
+      research_error: error instanceof Error ? error.message.slice(0, 300) : "The read failed.",
+    }).eq("university_id", universityId);
+  }
+  revalidatePath("/admin/outreach");
+  revalidatePath(`/admin/outreach/schools/${universityId}`);
+  redirect(`/admin/outreach/schools/${universityId}`);
+}
+
+export async function deleteLoggedReply(contactId: string, emailId: string): Promise<void> {
+  await requireStaff([]);
+  const supabase = await createClient();
+  await supabase.from("outreach_emails").delete().eq("id", emailId).eq("contact_id", contactId).eq("logged_by_hand", true);
+  refresh(contactId);
+}
