@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contactStatus, durationLabel, isoToZonedInput, outreachEmail, parseContacts, zonedInputToIso } from "@/lib/outreach";
+import { contactStatus, durationLabel, isoToZonedInput, outreachEmail, parseContacts, withFormLink, zonedInputToIso } from "@/lib/outreach";
 
 describe("outreach email", () => {
   it("fills in the first name, council, and university", () => {
@@ -9,11 +9,38 @@ describe("outreach email", () => {
     expect(body).toContain("We'd love to introduce GreekGeek to MGC leadership at Texas Christian University and see whether it could help.");
     expect(body).toContain("• Dues collection and chapter finances\n• Member directories and officer management");
     expect(body).toContain("Tell us about your chapter: https://greekgeek.org/intro/tcu");
-    expect(body.endsWith("Best,\nAmare Carey\nCo-Founder, GreekGeek\namare@greekgeek.org\nhttps://greekgeek.org")).toBe(true);
+    expect(body).toContain("you can also text me at (636) 515-1794 to set up a meeting");
+    expect(body.endsWith("Best,\nAmare Carey\nCo-Founder, GreekGeek\nEmail: amare@greekgeek.org (any time, 7 days a week)\nText: (636) 515-1794 (any time of day, 7 days a week)\nCall: (636) 515-1794 (10am to 10pm Central, 7 days a week)\nhttps://greekgeek.org")).toBe(true);
   });
 
   it("greets an office without a name", () => {
     expect(outreachEmail({ full_name: null, organization: "Fraternity and Sorority Life", university: "University of Kansas" }).body.startsWith("Hi there,")).toBe(true);
+  });
+});
+
+describe("school form link", () => {
+  const contact = { full_name: null, organization: "IFC", university: "University of Kansas" };
+
+  it("removes the form line when it is turned off", () => {
+    const body = withFormLink(outreachEmail(contact, "https://greekgeek.org/intro/ku").body, null);
+    expect(body).not.toContain("/intro/");
+    expect(body).toBe(outreachEmail(contact).body);
+  });
+
+  it("adds it back under the product links", () => {
+    const body = withFormLink(outreachEmail(contact).body, "https://greekgeek.org/intro/ku");
+    expect(body).toBe(outreachEmail(contact, "https://greekgeek.org/intro/ku").body);
+  });
+
+  it("replaces an old link instead of adding a second one", () => {
+    const body = withFormLink(outreachEmail(contact, "https://greekgeek.org/intro/old").body, "https://greekgeek.org/intro/new");
+    expect(body.match(/\/intro\//g)).toHaveLength(1);
+    expect(body).toContain("Tell us about your chapter: https://greekgeek.org/intro/new");
+  });
+
+  it("puts it before the sign-off in a hand-written email", () => {
+    const body = withFormLink("Hi Sam,\n\nQuick note about GreekGeek.\n\nBest,\nAmare", "https://greekgeek.org/intro/ku");
+    expect(body).toBe("Hi Sam,\n\nQuick note about GreekGeek.\n\nTell us about your chapter: https://greekgeek.org/intro/ku\n\nBest,\nAmare");
   });
 });
 

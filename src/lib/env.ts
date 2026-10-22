@@ -38,6 +38,7 @@ export const serverEnv = {
   resendApiKey: () => read("RESEND_API_KEY"),
   resendWebhookSecret: () => read("RESEND_WEBHOOK_SECRET"),
   outreachFrom: () => read("OUTREACH_FROM"),
+  outreachSiteUrl: () => (read("OUTREACH_SITE_URL") ?? "https://greekgeek.org").replace(/\/+$/, ""),
   outreachReplyTo: () => read("OUTREACH_REPLY_TO") ?? "amare@greekgeek.org",
   emailFrom: () => read("EMAIL_FROM") ?? "Chapter <no-reply@localhost>",
   isProduction: () => process.env.NODE_ENV === "production",

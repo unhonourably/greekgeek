@@ -8,7 +8,9 @@ import { formatDateTime } from "@/lib/format";
 import { OUTREACH_ZONE, outreachEmail } from "@/lib/outreach";
 import type { Finding } from "@/lib/page-facts";
 import { createClient } from "@/lib/supabase/server";
-import { ensureIntroCode, gatherUniversity, loadSchoolPhoto, sendOutreach } from "../../actions";
+import { ensureIntroCode, gatherUniversity, loadSchoolPhoto } from "../../actions";
+import { BulkToggle } from "../../bulk-toggle";
+import { CopyLink } from "../../copy-link";
 import { SchoolPhoto } from "../../school-photo";
 import { WriteLetters } from "../../write-dialog";
 
@@ -65,11 +67,14 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
   const { data: schoolData } = await supabase.from("universities").select("id, name, city, state, email_domains").eq("id", id).maybeSingle();
   if (!schoolData) notFound();
   const school = schoolData as School;
-  const [{ data: outreachData, error: outreachError }, { data: contactData }, { data: responseData }] = await Promise.all([
+  const [{ data: outreachData, error: outreachError }, { data: contactData }, { data: responseData }, bulk] = await Promise.all([
     supabase.from("university_outreach").select("image_url, research_status, research_finished_at, research_error, pages, findings, chapters_found, emails_found, facts_found, intro_code").eq("university_id", id).maybeSingle(),
     supabase.from("outreach_contacts").select("id, full_name, organization, role, email, emails_sent, replies, do_not_contact").eq("university_id", id).order("organization"),
     supabase.from("intro_responses").select("id, full_name, role, organization, council, member_count, in_house, out_of_house, dues, email, phone, prefer_email, prefer_text, prefer_call, best_time, interest, help, notes, created_at").eq("university_id", id).order("created_at", { ascending: false }),
+    supabase.from("outreach_contacts").select("id, bulk_subject, bulk_body").eq("university_id", id).not("bulk_added_at", "is", null),
   ]);
+  const bulkReady = !bulk.error;
+  const queued = new Map((bulk.data ?? []).map((row) => [row.id as string, row as { bulk_subject: string | null; bulk_body: string | null }]));
   if (outreachError && /does not exist|schema cache/i.test(outreachError.message)) {
     return <Notice tone="danger">The university outreach migration is not on this database yet. Run npx supabase db push.</Notice>;
   }
@@ -77,7 +82,7 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
   const contacts = (contactData ?? []) as Contact[];
   const responses = (responseData ?? []) as ResponseRow[];
   const code = outreach?.intro_code ?? await ensureIntroCode(id);
-  const introUrl = `${serverEnv.appUrl()}/intro/${code}`;
+  const introUrl = `${serverEnv.outreachSiteUrl()}/intro/${code}`;
   const findings = outreach?.findings ?? [];
   const from = serverEnv.outreachFrom() ?? serverEnv.emailFrom();
   const drafts = contacts.map((contact) => {
@@ -92,10 +97,12 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
       emailsSent: contact.emails_sent,
       replies: contact.replies,
       blocked: contact.do_not_contact,
-      subject: mail.subject,
-      body: mail.body,
+      subject: queued.get(contact.id)?.bulk_subject ?? mail.subject,
+      body: queued.get(contact.id)?.bulk_body ?? mail.body,
+      inBulk: bulkReady ? queued.has(contact.id) : null,
     };
   });
+  const addable = drafts.filter((draft) => !draft.blocked && !draft.inBulk).map((draft) => draft.id);
 
   return (
     <div className="space-y-6">
@@ -126,7 +133,11 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
         <Card>
           <CardHeader title="Chapter form" description="This link goes in the email. It is only for this school." />
           <CardBody className="space-y-2">
-            <a href={introUrl} className="break-all text-sm text-accent underline-offset-2 hover:underline">{introUrl}</a>
+            <a href={introUrl} target="_blank" rel="noreferrer" className="break-all text-sm text-accent underline-offset-2 hover:underline">{introUrl}</a>
+            <div className="flex flex-wrap items-center gap-3">
+              <CopyLink url={introUrl} />
+              <Link href="/admin/outreach/forms" className="text-[13px] text-ink-3 hover:text-ink">All school forms</Link>
+            </div>
             <p className="text-[13px] text-ink-3">{responses.length} response{responses.length === 1 ? "" : "s"} so far.</p>
           </CardBody>
         </Card>
@@ -160,7 +171,7 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
         <details className="rounded-lg border border-line bg-surface px-5 py-3 text-sm">
           <summary className="cursor-pointer text-ink-2">Pages opened</summary>
           <ul className="mt-3 space-y-1">
-            {outreach.pages.map((page) => (
+            {outreach.pages.filter((page, index, all) => all.findIndex((other) => other.url === page.url) === index).map((page) => (
               <li key={page.url} className="truncate">
                 <a href={page.url} target="_blank" rel="noreferrer" className={page.ok ? "text-ink-2 hover:text-ink" : "text-danger"}>{page.title || page.url}</a>
               </li>
@@ -170,9 +181,18 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
       ) : null}
 
       <Card>
-        <CardHeader title="Emails" description="Addresses found on the school's Greek life pages. Write from here, or open one for the full send history." />
+        <CardHeader
+          title="Emails"
+          description="Addresses found on the school's Greek life pages. Write from here, or open one for the full send history."
+          actions={bulkReady && drafts.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {addable.length > 0 ? <BulkToggle ids={addable} on label={`Queue the preset letter for all ${addable.length}`} /> : null}
+              <Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk mail list</Link>
+            </div>
+          ) : null}
+        />
         {drafts.length === 0 ? <CardBody><p className="text-sm text-ink-3">{outreach?.research_status === "done" ? "No Greek life email was on the pages we read." : "Gather info to look for emails."}</p></CardBody> : (
-          <WriteLetters drafts={drafts} send={Object.fromEntries(drafts.map((draft) => [draft.id, sendOutreach.bind(null, draft.id)]))} from={from} replyTo={serverEnv.outreachReplyTo()} canSend={Boolean(serverEnv.resendApiKey())} />
+          <WriteLetters drafts={drafts} from={from} replyTo={serverEnv.outreachReplyTo()} canSend={Boolean(serverEnv.resendApiKey())} />
         )}
       </Card>
 

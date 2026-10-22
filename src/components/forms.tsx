@@ -25,11 +25,12 @@ export function SubmitButton({
   name?: string;
   value?: string;
 }) {
-  const { pending } = useFormStatus();
+  const { pending, data } = useFormStatus();
+  const active = pending && (!name || !data?.has(name) || data.get(name) === value);
   return (
-    <Button type="submit" variant={variant} size={size} className={className} disabled={pending || disabled} aria-busy={pending} name={name} value={value}>
-      {pending ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
-      {pending && pendingLabel ? pendingLabel : children}
+    <Button type="submit" variant={variant} size={size} className={className} disabled={pending || disabled} aria-busy={active} name={name} value={value}>
+      {active ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+      {active && pendingLabel ? pendingLabel : children}
     </Button>
   );
 }

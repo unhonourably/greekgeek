@@ -1,21 +1,15 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { ActionState } from "@/lib/action-state";
 import { requireStaff } from "@/lib/auth";
-import { sendEmail } from "@/lib/email";
-import { serverEnv } from "@/lib/env";
 import { parseContacts, zonedInputToIso } from "@/lib/outreach";
 import { readGreekLife } from "@/lib/university-research";
 import { photoSlot, usablePhoto, wikipediaPhoto } from "@/lib/university-photo";
 import { createClient } from "@/lib/supabase/server";
-
-function randomCode(): string {
-  return randomBytes(9).toString("base64url");
-}
+import { deliverOutreach, introCode, randomCode, refreshOutreach } from "./send";
 
 const contactSchema = z.object({
   university: z.string().trim().min(2, "Enter the university.").max(160),
@@ -53,9 +47,7 @@ function duplicate(message: string | undefined): boolean {
 }
 
 function refresh(id?: string, schoolId?: string | null) {
-  revalidatePath("/admin/outreach");
-  if (id) revalidatePath(`/admin/outreach/contacts/${id}`);
-  if (schoolId) revalidatePath(`/admin/outreach/schools/${schoolId}`);
+  refreshOutreach(id, schoolId);
 }
 
 export async function addContact(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -117,40 +109,7 @@ export async function deleteContact(id: string): Promise<void> {
 
 export async function sendOutreach(id: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const { user } = await requireStaff([]);
-  const subject = String(formData.get("subject") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
-  if (subject.length < 2 || subject.length > 300) return { error: "Add a subject line." };
-  if (body.length < 20 || body.length > 50000) return { error: "The email body is empty or too long." };
-  if (!serverEnv.resendApiKey()) return { error: "Sending is off because RESEND_API_KEY is not set on the server." };
-  const supabase = await createClient();
-  const { data: contact } = await supabase.from("outreach_contacts").select("id, email, do_not_contact, university_id").eq("id", id).maybeSingle();
-  if (!contact) return { error: "This contact no longer exists." };
-  if (contact.do_not_contact) return { error: "This contact is marked do not contact." };
-  const { data: row, error } = await supabase
-    .from("outreach_emails")
-    .insert({ contact_id: id, direction: "sent", status: "sending", subject, body, to_email: contact.email, sent_by: user.id })
-    .select("id")
-    .single();
-  if (error || !row) return { error: "The email could not be recorded, so it was not sent." };
-  try {
-    const result = await sendEmail({
-      to: contact.email,
-      from: serverEnv.outreachFrom(),
-      replyTo: serverEnv.outreachReplyTo(),
-      subject,
-      text: body,
-      idempotencyKey: row.id,
-    });
-    if (!result.delivered) throw new Error("Email delivery is not configured.");
-    await supabase.from("outreach_emails").update({ status: "sent", provider_id: result.id, occurred_at: new Date().toISOString() }).eq("id", row.id);
-  } catch (sendError) {
-    const message = sendError instanceof Error ? sendError.message : "Send failed";
-    await supabase.from("outreach_emails").update({ status: "failed", error: message.slice(0, 500) }).eq("id", row.id);
-    refresh(id, contact.university_id);
-    return { error: `Not sent: ${message}` };
-  }
-  refresh(id, contact.university_id);
-  return { ok: true, message: `Sent to ${contact.email}.` };
+  return deliverOutreach(user.id, id, formData);
 }
 
 export async function logReply(id: string, _: ActionState, formData: FormData): Promise<ActionState> {
@@ -178,18 +137,13 @@ export async function logReply(id: string, _: ActionState, formData: FormData): 
 
 export async function ensureIntroCode(universityId: string): Promise<string> {
   await requireStaff([]);
-  const supabase = await createClient();
-  const { data } = await supabase.from("university_outreach").select("intro_code").eq("university_id", universityId).maybeSingle();
-  if (data?.intro_code) return data.intro_code;
-  const code = randomCode();
-  if (!data) {
-    const { error } = await supabase.from("university_outreach").insert({ university_id: universityId, intro_code: code });
-    if (!error) return code;
-  }
-  const again = await supabase.from("university_outreach").select("intro_code").eq("university_id", universityId).maybeSingle();
-  if (again.data?.intro_code) return again.data.intro_code;
-  await supabase.from("university_outreach").update({ intro_code: code }).eq("university_id", universityId).is("intro_code", null);
-  return code;
+  return introCode(await createClient(), universityId);
+}
+
+export async function createIntroForm(universityId: string): Promise<void> {
+  await requireStaff([]);
+  await introCode(await createClient(), universityId);
+  revalidatePath("/admin/outreach/forms");
 }
 
 export async function loadSchoolPhoto(universityId: string): Promise<string | null> {

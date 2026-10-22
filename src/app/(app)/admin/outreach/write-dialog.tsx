@@ -2,12 +2,12 @@
 
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
-import { Badge } from "@/components/ui";
-import type { ActionState } from "@/lib/action-state";
-import { SendForm } from "./forms";
-
-type FormAction = (state: ActionState, formData: FormData) => Promise<ActionState>;
+import { ListPlus, Send } from "lucide-react";
+import { ActionForm, FormMessage, SubmitButton } from "@/components/forms";
+import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
+import { BulkToggle } from "./bulk-toggle";
+import { sendOutreachLetter } from "./letter-action";
+import { Collapse, SentPanel } from "./sent-panel";
 
 export type LetterDraft = {
   id: string;
@@ -21,9 +21,10 @@ export type LetterDraft = {
   blocked: boolean;
   subject: string;
   body: string;
+  inBulk: boolean | null;
 };
 
-export function WriteLetters({ drafts, send, from, replyTo, canSend }: { drafts: LetterDraft[]; send: Record<string, FormAction>; from: string; replyTo: string; canSend: boolean }) {
+export function WriteLetters({ drafts, from, replyTo, canSend }: { drafts: LetterDraft[]; from: string; replyTo: string; canSend: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const titleId = useId();
   const letter = drafts.find((draft) => draft.id === openId) ?? null;
@@ -56,6 +57,8 @@ export function WriteLetters({ drafts, send, from, replyTo, canSend }: { drafts:
             <div className="flex items-center gap-2">
               {draft.replies > 0 ? <Badge tone="positive">Replied</Badge> : draft.emailsSent > 0 ? <Badge>Sent</Badge> : null}
               {draft.blocked ? <Badge tone="warning">Do not contact</Badge> : null}
+              {draft.inBulk ? <Badge tone="accent">On bulk list</Badge> : null}
+              {draft.inBulk === null || draft.blocked ? null : <BulkToggle ids={[draft.id]} on={!draft.inBulk} />}
               <button id={`write-${draft.id}`} type="button" onClick={() => setOpenId(draft.id)} className="text-sm text-ink hover:underline">Write</button>
               <Link href={`/admin/outreach/contacts/${draft.id}`} className="text-sm text-ink-3 hover:text-ink">History</Link>
             </div>
@@ -77,22 +80,51 @@ export function WriteLetters({ drafts, send, from, replyTo, canSend }: { drafts:
                 <p className="mt-0.5 truncate text-[13px] text-ink-3">{letter.hasName ? `${letter.role}, ${letter.organization}` : letter.role}</p>
               </div>
               <button type="button" aria-label="Close" onClick={() => { setOpenId(null); document.getElementById(`write-${letter.id}`)?.focus(); }} className="rounded-md p-1 text-ink-3 hover:bg-subtle hover:text-ink">
-                <X className="size-4" aria-hidden />
+                <svg viewBox="0 0 16 16" className="size-4" aria-hidden>
+                  <path d="M4 4 L12 12 M12 4 L4 12" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
               </button>
             </div>
             <div className="overflow-y-auto px-5 py-4">
-              <SendForm
-                key={letter.id}
-                action={send[letter.id]}
-                subject={letter.subject}
-                body={letter.body}
-                to={letter.email}
-                from={from}
-                replyTo={replyTo}
-                label={letter.emailsSent > 0 ? "Send again" : "Send email"}
-                disabled={letter.blocked || !canSend}
-                bodyClassName="min-h-64 font-sans text-[13px] leading-relaxed"
-              />
+              <ActionForm key={letter.id} action={sendOutreachLetter}>
+                {(state) => (
+                  <>
+                    {state.ok ? <SentPanel queued={state.values?.intent === "queue"} message={state.message} extra={<Button type="button" variant="ghost" size="sm" onClick={() => setOpenId(null)}>Close</Button>} /> : null}
+                    <Collapse open={!state.ok}>
+                    <div className="space-y-3">
+                    <input type="hidden" name="contact_id" value={letter.id} />
+                    <FormMessage state={state} />
+                    <dl className="grid gap-x-4 gap-y-1 text-[13px] sm:grid-cols-[auto_1fr]">
+                      <dt className="text-ink-3">From</dt>
+                      <dd className="truncate text-ink-2">{from}</dd>
+                      <dt className="text-ink-3">To</dt>
+                      <dd className="truncate text-ink">{letter.email}</dd>
+                      <dt className="text-ink-3">Replies go to</dt>
+                      <dd className="truncate text-ink-2">{replyTo}</dd>
+                    </dl>
+                    <Field label="Subject" htmlFor="send-subject">
+                      <Input id="send-subject" name="subject" defaultValue={letter.subject} />
+                    </Field>
+                    <Field label="Message" htmlFor="send-body">
+                      <Textarea id="send-body" name="body" defaultValue={letter.body} className="min-h-64 font-sans text-[13px] leading-relaxed" />
+                    </Field>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SubmitButton name="intent" value="send" pendingLabel="Sending" disabled={letter.blocked || !canSend}>
+                        <Send className="size-4" aria-hidden />
+                        {letter.emailsSent > 0 ? "Send again" : "Send email"}
+                      </SubmitButton>
+                      {letter.inBulk === null ? null : (
+                        <SubmitButton name="intent" value="queue" variant="secondary" pendingLabel="Saving" disabled={letter.blocked}>
+                          <ListPlus className="size-4" aria-hidden />
+                          {letter.inBulk ? "Update bulk list email" : "Add to bulk list"}
+                        </SubmitButton>
+                      )}
+                    </div>
+                    </div>
+                    </Collapse>
+                  </>
+                )}
+              </ActionForm>
             </div>
           </div>
         </div>

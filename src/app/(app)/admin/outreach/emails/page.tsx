@@ -36,7 +36,7 @@ export default async function EmailsPage() {
   const rows = (data ?? []) as Row[];
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow={<Link href="/admin/outreach" className="hover:text-ink">Universities</Link>} title="Saved emails" description="Every address gathered from a school, and every email sent to it." />
+      <PageHeader eyebrow={<Link href="/admin/outreach" className="hover:text-ink">Universities</Link>} title="Saved emails" description="Every address gathered from a school, and every email sent to it." actions={<Link href="/admin/outreach/sent" className="text-sm text-ink-2 hover:text-ink">Sent</Link>} />
       {error ? <p className="text-sm text-danger">{error.message}</p> : null}
       {rows.length === 0 ? (
         <EmptyState icon={Mail} title="No emails yet">Gather info on a university to collect Greek life addresses.</EmptyState>

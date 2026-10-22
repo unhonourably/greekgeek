@@ -33,6 +33,7 @@ export function outreachEmail(contact: OutreachContact, introUrl?: string | null
     "Our goal is to reduce the time officers spend juggling spreadsheets, payment tools, group chats, and separate platforms, so they can focus on their members and chapter experience.",
     "GreekGeek costs $30 per chapter per month and includes unlimited members and officers. Online dues payments also have a 1.5% GreekGeek platform fee plus standard Stripe processing fees. Each chapter connects its own Stripe account and receives dues directly; GreekGeek does not hold chapter funds.",
     `We'd love to introduce GreekGeek to ${contact.organization} leadership at ${contact.university} and see whether it could help. Would you be open to a brief demo or conversation?`,
+    "If you'd like to learn more, you can also text me at (636) 515-1794 to set up a meeting. Just send a day and time that works for you, and I'll make it happen, whether that's a quick call, a video meeting, or meeting in person.",
     [
       "Website: https://greekgeek.org",
       "Product overview: https://docs.google.com/document/d/1Eg1HZ67C4GkPGBDOd_7RpBR6HFgUQrHfMgO8sVsvUPw/edit?usp=sharing",
@@ -40,9 +41,32 @@ export function outreachEmail(contact: OutreachContact, introUrl?: string | null
       ...(introUrl ? [`Tell us about your chapter: ${introUrl}`] : []),
     ].join("\n"),
     "Thank you for your time.",
-    ["Best,", "Amare Carey", "Co-Founder, GreekGeek", "amare@greekgeek.org", "https://greekgeek.org"].join("\n"),
+    [
+      "Best,",
+      "Amare Carey",
+      "Co-Founder, GreekGeek",
+      "Email: amare@greekgeek.org (any time, 7 days a week)",
+      "Text: (636) 515-1794 (any time of day, 7 days a week)",
+      "Call: (636) 515-1794 (10am to 10pm Central, 7 days a week)",
+      "https://greekgeek.org",
+    ].join("\n"),
   ].join("\n\n");
   return { subject, body };
+}
+
+const FORM_LINE = /^.*https?:\/\/\S+\/intro\/[A-Za-z0-9_-]+.*$/;
+
+export function withFormLink(body: string, url: string | null): string {
+  const lines = body.split("\n").filter((line) => !FORM_LINE.test(line.trim()));
+  if (url) {
+    const line = `Tell us about your chapter: ${url}`;
+    const after = lines.findIndex((text) => /^Product screenshots:/i.test(text.trim()));
+    const before = lines.findIndex((text) => /^(Thank you for your time|Best,|Thanks,)/i.test(text.trim()));
+    if (after >= 0) lines.splice(after + 1, 0, line);
+    else if (before >= 0) lines.splice(before, 0, line, "");
+    else lines.push("", line);
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export type ParsedContact = {

@@ -10,6 +10,7 @@ import { formatDateTime } from "@/lib/format";
 import { OUTREACH_ZONE, STATUS_LABEL, STATUS_TONE, contactStatus, durationLabel, isoToZonedInput, outreachEmail } from "@/lib/outreach";
 import { createClient } from "@/lib/supabase/server";
 import { deleteContact, deleteLoggedReply, logReply, sendOutreach, setDoNotContact, updateContact } from "../../actions";
+import { BulkToggle } from "../../bulk-toggle";
 import { ContactForm, ReplyForm, SendForm } from "../../forms";
 
 type Contact = {
@@ -35,6 +36,7 @@ type Contact = {
   last_reply_at: string | null;
   replies: number;
   created_at: string;
+  bulk_added_at?: string | null;
 };
 
 type Entry = {
@@ -92,7 +94,7 @@ export default async function OutreachContactPage({ params }: PageProps<"/admin/
     await supabase.from("outreach_emails").update({ read_at: new Date().toISOString() }).eq("contact_id", id).eq("direction", "reply").is("read_at", null);
   }
   const status = contactStatus(contact);
-  const introUrl = code.data?.intro_code ? `${serverEnv.appUrl()}/intro/${code.data.intro_code}` : null;
+  const introUrl = code.data?.intro_code ? `${serverEnv.outreachSiteUrl()}/intro/${code.data.intro_code}` : null;
   const draft = outreachEmail(contact, introUrl);
   const tracking = Boolean(serverEnv.resendWebhookSecret());
   const sendingReady = Boolean(serverEnv.resendApiKey());
@@ -119,7 +121,13 @@ export default async function OutreachContactPage({ params }: PageProps<"/admin/
         eyebrow={<Link href={contact.university_id ? `/admin/outreach/schools/${contact.university_id}` : "/admin/outreach"} className="hover:text-ink">{contact.university_id ? contact.university : "Outreach"}</Link>}
         title={contact.full_name ?? contact.email}
         description={`${contact.role}, ${contact.organization} · ${contact.university}`}
-        actions={nextData ? <ButtonLink variant="secondary" href={`/admin/outreach/contacts/${nextData.id}`}>Next contact<ArrowRight className="size-4" aria-hidden /></ButtonLink> : null}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {contact.bulk_added_at !== undefined && !contact.do_not_contact ? <BulkToggle ids={[contact.id]} on={!contact.bulk_added_at} /> : null}
+            {contact.bulk_added_at ? <Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk mail list</Link> : null}
+            {nextData ? <ButtonLink variant="secondary" href={`/admin/outreach/contacts/${nextData.id}`}>Next contact<ArrowRight className="size-4" aria-hidden /></ButtonLink> : null}
+          </div>
+        }
       />
       {contact.do_not_contact ? <Notice tone="warning" title="Do not contact">{contact.bounced_at ? "The last email bounced, so sending is blocked." : "Sending to this address is blocked."}</Notice> : null}
 

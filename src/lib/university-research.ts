@@ -328,7 +328,7 @@ export async function readGreekLife(domains: string[], fetchImpl: Fetcher = fetc
     opened += batch.length;
     for (const { job, page } of read) {
       if (!page) continue;
-      for (const host of engageHosts(page.html, page.finalUrl)) hosts.add(host);
+      for (const host of engageHosts(page.html, page.finalUrl, domain)) hosts.add(host);
       const count = fraternityCountQuote(page.html);
       if (count) found.push([{ kind: "members", title: "Chapters", detail: null, quote: count, source_url: page.finalUrl }]);
       const fromGreek = job.score >= 50 || looksGreek(page.finalUrl) || looksGreek(pageTitle(page.html) ?? "");
@@ -356,8 +356,13 @@ export async function readGreekLife(domains: string[], fetchImpl: Fetcher = fetc
   }
 
   const findings = mergeFindings(found);
+  const unique = new Map<string, PageRead>();
+  for (const page of pages) {
+    const existing = unique.get(page.url);
+    if (!existing || (!existing.ok && page.ok)) unique.set(page.url, page);
+  }
   return {
-    pages: pages.slice(0, 30),
+    pages: [...unique.values()].slice(0, 30),
     findings,
     error: findings.length === 0 ? "The site opened, but its public pages did not list chapters, dues, housing, or a Greek life email." : null,
   };

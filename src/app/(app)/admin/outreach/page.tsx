@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { SubmitButton } from "@/components/forms";
-import { Badge, Input, Notice, PageHeader, Stat, StatGrid } from "@/components/ui";
+import { ChevronDown, PenLine, Star } from "lucide-react";
+import { RECOMMENDED_DOMAINS, RECOMMENDED_NAMES, RECOMMENDED_SCHOOLS, pickCampus } from "@/lib/recommended-schools";
+import { Badge, ButtonLink, Input, Notice, PageHeader, Stat, StatGrid } from "@/components/ui";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { gatherUniversity, loadSchoolPhoto } from "./actions";
@@ -54,12 +56,39 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
   const research = new Map(((researchQuery.data ?? []) as Research[]).map((row) => [row.university_id, row]));
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const showRecommended = !q && !state && page === 1;
+  const recommendedRows = showRecommended
+    ? (
+        await Promise.all([
+          supabase.from("universities").select("id, name, city, state, email_domains").eq("source", "ipeds").overlaps("email_domains", RECOMMENDED_DOMAINS),
+          supabase.from("universities").select("id, name, city, state, email_domains").eq("source", "ipeds").in("name", RECOMMENDED_NAMES),
+        ])
+      ).flatMap((result) => (result.data ?? []) as School[])
+    : [];
+  const picked = RECOMMENDED_SCHOOLS.map((group) => ({
+    region: group.region,
+    schools: [...new Map(group.schools.map((pick) => pickCampus(recommendedRows, pick)).filter((school): school is School => Boolean(school)).map((school) => [school.id, school])).values()],
+  })).filter((group) => group.schools.length > 0);
+  const pickedIds = picked.flatMap((group) => group.schools.map((school) => school.id));
+  const pickedResearch = pickedIds.length
+    ? new Map((((await supabase.from("university_outreach").select("university_id, image_url, research_status, chapters_found, emails_found, facts_found").in("university_id", pickedIds)).data ?? []) as Research[]).map((row) => [row.university_id, row]))
+    : new Map<string, Research>();
+  const bulkCount = (await supabase.from("outreach_contacts").select("id", { count: "exact", head: true }).not("bulk_added_at", "is", null)).count ?? 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Universities"
         description="Accredited U.S. schools already in GreekGeek. Photos load from Wikipedia. Gather info reads one school's own site when you ask it to."
-        actions={<Link href="/admin/outreach/emails" className="text-sm text-ink-2 hover:text-ink">Saved emails</Link>}
+        actions={
+          <div className="flex items-center gap-4">
+            <Link href="/admin/outreach/sent" className="text-sm text-ink-2 hover:text-ink">Sent</Link>
+            <Link href="/admin/outreach/emails" className="text-sm text-ink-2 hover:text-ink">Saved emails</Link>
+            <Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk list{bulkCount > 0 ? ` (${bulkCount})` : ""}</Link>
+            <Link href="/admin/outreach/forms" className="text-sm text-ink-2 hover:text-ink">School forms</Link>
+            <ButtonLink href="/admin/outreach/compose" size="sm"><PenLine className="size-4" aria-hidden />Compose email</ButtonLink>
+          </div>
+        }
       />
       {directoryError ? <Notice tone="danger">{directoryError}</Notice> : null}
       {migrationMissing ? <Notice tone="danger">The university outreach migration is not on this database yet. Run npx supabase db push.</Notice> : null}
@@ -79,6 +108,43 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
         </select>
         <button type="submit" className="h-9 rounded-md border border-line-strong px-3 text-sm text-ink hover:bg-subtle">Search</button>
       </form>
+
+      {picked.length > 0 ? (
+        <details open className="group rounded-lg border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+            <div>
+              <h2 className="flex items-center gap-2 font-semibold text-ink"><Star className="size-4 text-accent" aria-hidden />Recommended schools</h2>
+              <p className="mt-0.5 text-[13px] text-ink-3">Schools widely known for large, active Greek communities. A hand-picked starting list, not a ranking.</p>
+            </div>
+            <ChevronDown className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="space-y-5 border-t border-line px-5 py-4">
+            {picked.map((group) => (
+              <section key={group.region}>
+                <h3 className="text-[12px] font-medium uppercase tracking-wide text-ink-3">{group.region}</h3>
+                <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {group.schools.map((school) => {
+                    const info = pickedResearch.get(school.id);
+                    return (
+                      <li key={school.id}>
+                        <Link href={`/admin/outreach/schools/${school.id}`} className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2 hover:border-line-strong hover:bg-subtle">
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm text-ink">{school.name}</span>
+                            <span className="block truncate text-[12px] text-ink-3">{[school.city, school.state].filter(Boolean).join(", ")}</span>
+                          </span>
+                          {info?.research_status === "done" ? <Badge tone="positive">{info.emails_found} emails</Badge> : <Badge>New</Badge>}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {showRecommended ? <h2 className="text-sm font-medium text-ink-2">All schools</h2> : null}
 
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {schools.map((school) => {
