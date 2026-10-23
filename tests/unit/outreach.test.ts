@@ -8,6 +8,7 @@ describe("outreach email", () => {
     expect(body.startsWith("Hi Margarita,\n\nMy name is Amare Carey")).toBe(true);
     expect(body).toContain("We'd love to introduce GreekGeek to MGC leadership at Texas Christian University and see whether it could help.");
     expect(body).toContain("• Dues collection and chapter finances\n• Member directories and officer management");
+    expect(body).toContain("Website: https://greekgeek.org\nFeatures: https://www.greekgeek.org/features\n");
     expect(body).toContain("Tell us about your chapter: https://greekgeek.org/intro/tcu");
     expect(body).toContain("you can also text me at (636) 515-1794 to set up a meeting");
     expect(body).toContain("Feel free to just reply to this email");
@@ -98,6 +99,7 @@ describe("form reply", () => {
     expect(body).toContain("You mentioned weeknights");
     expect(body).toContain("You said dues and finances, recruitment and events are where you'd want the most help");
     expect(body).toContain("text or call me at (636) 515-1794");
+    expect(body).toContain("You can see everything GreekGeek does here: https://www.greekgeek.org/features");
   });
 
   it("keeps it short when they are not ready", () => {

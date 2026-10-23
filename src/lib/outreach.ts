@@ -10,6 +10,8 @@ export type OutreachContact = {
 
 export type OutreachDraft = { subject: string; body: string };
 
+export const FEATURES_URL = "https://www.greekgeek.org/features";
+
 export function firstName(fullName: string | null): string | null {
   const first = fullName?.trim().split(/\s+/)[0];
   return first ? first : null;
@@ -37,6 +39,7 @@ export function outreachEmail(contact: OutreachContact, introUrl?: string | null
     "If you'd like to learn more, you can also text me at (636) 515-1794 to set up a meeting. Just send a day and time that works for you, and I'll make it happen, whether that's a quick call, a video meeting, or meeting in person.",
     [
       "Website: https://greekgeek.org",
+      `Features: ${FEATURES_URL}`,
       "Product overview: https://docs.google.com/document/d/1Eg1HZ67C4GkPGBDOd_7RpBR6HFgUQrHfMgO8sVsvUPw/edit?usp=sharing",
       "Product screenshots: https://drive.google.com/drive/folders/1lmZWW4olb_VC5qA6AkEgX6asN6EeelUF?usp=sharing",
       ...(introUrl ? [`Tell us about your chapter: ${introUrl}`] : []),
@@ -230,6 +233,7 @@ export function formReplyEmail(response: { full_name: string; organization: stri
       `Thank you for telling us about ${response.organization}.`,
       interest,
       ...(list ? [`You said ${list} ${areas.length > 1 ? "are" : "is"} where you'd want the most help, so I'll focus there.`] : []),
+      `You can see everything GreekGeek does here: ${FEATURES_URL}`,
       reach,
       ["Best,", "Amare Carey", "Co-Founder, GreekGeek", "https://greekgeek.org"].join("\n"),
     ].join("\n\n"),
