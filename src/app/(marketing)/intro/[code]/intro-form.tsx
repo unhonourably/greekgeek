@@ -3,15 +3,7 @@
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
-
-const HELP = [
-  ["dues", "Dues and finances"],
-  ["directory", "Member directory"],
-  ["recruitment", "Recruitment"],
-  ["events", "Events"],
-  ["announcements", "Announcements"],
-  ["housing", "Housing"],
-] as const;
+import { FORM_HELP as HELP } from "@/lib/outreach";
 
 export function IntroForm({ action }: { action: (state: ActionState, formData: FormData) => Promise<ActionState> }) {
   return (

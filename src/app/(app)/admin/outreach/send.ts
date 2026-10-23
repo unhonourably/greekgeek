@@ -17,8 +17,49 @@ export function refreshOutreach(id?: string, schoolId?: string | null) {
   revalidatePath("/admin/outreach/emails");
   revalidatePath("/admin/outreach/bulk");
   revalidatePath("/admin/outreach/bulk/history");
+  revalidatePath("/admin/outreach/stats");
+  revalidatePath("/admin/outreach/forms");
+  revalidatePath("/admin/outreach/forms/[id]", "page");
   if (id) revalidatePath(`/admin/outreach/contacts/${id}`);
   if (schoolId) revalidatePath(`/admin/outreach/schools/${schoolId}`);
+}
+
+export async function contactForResponse(supabase: Supabase, userId: string, responseId: string): Promise<{ id: string } | { error: string }> {
+  const { data: response } = await supabase
+    .from("intro_responses")
+    .select("id, contact_id, full_name, role, organization, email, university_id, university:universities(name)")
+    .eq("id", responseId)
+    .maybeSingle();
+  if (!response) return { error: "This form submission no longer exists." };
+  if (response.contact_id) return { id: response.contact_id as string };
+  const email = String(response.email).trim().toLowerCase();
+  const school = response.university as unknown as { name: string } | null;
+  const { data: existing } = await supabase.from("outreach_contacts").select("id").eq("email_normalized", email).maybeSingle();
+  let contactId = existing?.id as string | undefined;
+  if (!contactId) {
+    const { data: created } = await supabase
+      .from("outreach_contacts")
+      .insert({
+        university: (school?.name ?? "Unknown school").slice(0, 160),
+        university_id: response.university_id,
+        organization: String(response.organization).slice(0, 120),
+        role: String(response.role).slice(0, 80),
+        full_name: response.full_name,
+        email,
+        notes: "Added from their interest form.",
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    contactId = created?.id as string | undefined;
+    if (!contactId) {
+      const { data: again } = await supabase.from("outreach_contacts").select("id").eq("email_normalized", email).maybeSingle();
+      contactId = again?.id as string | undefined;
+    }
+  }
+  if (!contactId) return { error: "A contact could not be made for this email." };
+  await supabase.from("intro_responses").update({ contact_id: contactId }).eq("id", responseId);
+  return { id: contactId };
 }
 
 export function randomCode(): string {

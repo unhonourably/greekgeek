@@ -5,9 +5,9 @@ import { Send } from "lucide-react";
 import { SubmitButton } from "@/components/forms";
 import { Button, Checkbox } from "@/components/ui";
 
-export function SendConfirm({ label, disabled, children }: { label: string; disabled?: boolean; children?: ReactNode }) {
+export function SendConfirm({ label, disabled, includeFormDefault = true, children }: { label: string; disabled?: boolean; includeFormDefault?: boolean; children?: ReactNode }) {
   const [confirming, setConfirming] = useState(false);
-  const [includeForm, setIncludeForm] = useState(true);
+  const [includeForm, setIncludeForm] = useState(includeFormDefault);
 
   if (!confirming) {
     return (

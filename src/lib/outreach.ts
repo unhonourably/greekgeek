@@ -177,6 +177,65 @@ export const STATUS_TONE: Record<ContactStatus, "gold" | "neutral" | "info" | "p
   do_not_contact: "warning",
 };
 
+export const FORM_STATUSES = ["new", "contacted", "meeting", "signed_up", "not_a_fit", "archived"] as const;
+
+export type FormStatus = (typeof FORM_STATUSES)[number];
+
+export const FORM_STATUS_LABEL: Record<FormStatus, string> = {
+  new: "New",
+  contacted: "Contacted",
+  meeting: "Meeting set",
+  signed_up: "Signed up",
+  not_a_fit: "Not a fit",
+  archived: "Archived",
+};
+
+export const FORM_STATUS_TONE: Record<FormStatus, "gold" | "neutral" | "info" | "positive" | "danger" | "warning" | "accent"> = {
+  new: "accent",
+  contacted: "info",
+  meeting: "warning",
+  signed_up: "positive",
+  not_a_fit: "neutral",
+  archived: "neutral",
+};
+
+export const FORM_INTEREST_LABEL: Record<string, string> = { demo: "Wants a demo", learn_more: "Wants more information", later: "Not right now" };
+
+export const FORM_HELP = [
+  ["dues", "Dues and finances"],
+  ["directory", "Member directory"],
+  ["recruitment", "Recruitment"],
+  ["events", "Events"],
+  ["announcements", "Announcements"],
+  ["housing", "Housing"],
+] as const;
+
+export const FORM_HELP_LABEL: Record<string, string> = Object.fromEntries(FORM_HELP);
+
+export function formReplyEmail(response: { full_name: string; organization: string; interest: string; help: string[]; best_time: string | null; prefer_text: boolean; prefer_call: boolean }, university: string): OutreachDraft {
+  const name = firstName(response.full_name);
+  const areas = response.help.map((item) => FORM_HELP_LABEL[item]?.toLowerCase()).filter(Boolean);
+  const list = areas.length > 1 ? `${areas.slice(0, -1).join(", ")} and ${areas[areas.length - 1]}` : areas[0];
+  const interest =
+    response.interest === "demo"
+      ? `You said you'd like a demo, so let's set one up. What day and time works for you${response.best_time ? `? You mentioned ${response.best_time.toLowerCase()}, so send me a time in that window and I'll make it work.` : "? Send me a few options and I'll make one work."}`
+      : response.interest === "later"
+        ? "You mentioned now isn't the right time, and that's completely fine. I'll keep this short, and you can reply whenever the timing is better."
+        : "You asked for more information first, so here's the short version. GreekGeek puts dues, the member directory, recruitment, events, announcements and housing in one place, and it costs $30 per chapter per month with unlimited members and officers.";
+  const reach = response.prefer_text || response.prefer_call ? "If it's easier, you can also text or call me at (636) 515-1794." : "Replies to this email come straight to my inbox.";
+  return {
+    subject: `Re: GreekGeek for ${response.organization} at ${university}`,
+    body: [
+      `Hi ${name ?? "there"},`,
+      `Thank you for telling us about ${response.organization}.`,
+      interest,
+      ...(list ? [`You said ${list} ${areas.length > 1 ? "are" : "is"} where you'd want the most help, so I'll focus there.`] : []),
+      reach,
+      ["Best,", "Amare Carey", "Co-Founder, GreekGeek", "https://greekgeek.org"].join("\n"),
+    ].join("\n\n"),
+  };
+}
+
 export const OUTREACH_ZONE = "America/Chicago";
 
 function zoneOffsetMs(date: Date, timeZone: string): number {

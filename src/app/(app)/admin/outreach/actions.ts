@@ -143,7 +143,7 @@ export async function ensureIntroCode(universityId: string): Promise<string> {
 export async function createIntroForm(universityId: string): Promise<void> {
   await requireStaff([]);
   await introCode(await createClient(), universityId);
-  revalidatePath("/admin/outreach/forms");
+  revalidatePath("/admin/outreach/forms/links");
 }
 
 export async function loadSchoolPhoto(universityId: string): Promise<string | null> {

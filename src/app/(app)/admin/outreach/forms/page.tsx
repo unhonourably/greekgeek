@@ -1,114 +1,153 @@
 import Link from "next/link";
-import { ClipboardList, ExternalLink, Search } from "lucide-react";
-import { SubmitButton } from "@/components/forms";
-import { Badge, Button, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
+import { ClipboardList, Mail, MessageSquare, Phone, Search } from "lucide-react";
+import { Badge, Button, Card, EmptyState, Input, Notice, PageHeader, Stat, StatGrid } from "@/components/ui";
 import { requireStaff } from "@/lib/auth";
-import { serverEnv } from "@/lib/env";
+import { formatDateTime, formatRelative, requestTime } from "@/lib/format";
+import { FORM_INTEREST_LABEL, FORM_STATUSES, FORM_STATUS_LABEL, FORM_STATUS_TONE, OUTREACH_ZONE, type FormStatus } from "@/lib/outreach";
 import { createClient } from "@/lib/supabase/server";
-import { createIntroForm } from "../actions";
-import { CopyLink } from "../copy-link";
 
-type Coded = { university_id: string; intro_code: string; university: { id: string; name: string; city: string | null; state: string | null } | null };
-type School = { id: string; name: string; city: string | null; state: string | null };
+const VIEWS = ["inbox", "unread", ...FORM_STATUSES] as const;
+type View = (typeof VIEWS)[number];
+const VIEW_LABEL: Record<View, string> = { inbox: "Inbox", unread: "Unread", ...FORM_STATUS_LABEL };
 
-function place(school: { city: string | null; state: string | null }): string {
-  return [school.city, school.state].filter(Boolean).join(", ");
+const BASE = "id, created_at, full_name, role, organization, council, member_count, email, phone, prefer_email, prefer_text, prefer_call, interest, help, notes, university_id, university:universities(name, state)";
+
+type Row = {
+  id: string;
+  created_at: string;
+  full_name: string;
+  role: string;
+  organization: string;
+  council: string | null;
+  member_count: number | null;
+  email: string;
+  phone: string | null;
+  prefer_email: boolean;
+  prefer_text: boolean;
+  prefer_call: boolean;
+  interest: string;
+  help: string[];
+  notes: string | null;
+  university_id: string;
+  university: { name: string; state: string | null } | null;
+  status: FormStatus;
+  read_at: string | null;
+  contact_id: string | null;
+};
+
+function hrefFor(view: View, q: string): string {
+  const params = new URLSearchParams();
+  if (view !== "inbox") params.set("view", view);
+  if (q) params.set("q", q);
+  const query = params.toString();
+  return query ? `/admin/outreach/forms?${query}` : "/admin/outreach/forms";
 }
 
-export default async function FormsPage({ searchParams }: PageProps<"/admin/outreach/forms">) {
+function inView(row: Row, view: View): boolean {
+  if (view === "inbox") return row.status !== "archived";
+  if (view === "unread") return !row.read_at;
+  return row.status === view;
+}
+
+export default async function FormsInboxPage({ searchParams }: PageProps<"/admin/outreach/forms">) {
   await requireStaff([]);
   const sp = await searchParams;
+  const view: View = VIEWS.includes(sp.view as View) ? (sp.view as View) : "inbox";
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
   const supabase = await createClient();
-  const [codedQuery, responsesQuery, contactsQuery] = await Promise.all([
-    supabase.from("university_outreach").select("university_id, intro_code, university:universities(id, name, city, state)").not("intro_code", "is", null).limit(5000),
-    supabase.from("intro_responses").select("university_id").limit(10000),
-    supabase.from("outreach_contacts").select("university_id").not("university_id", "is", null).limit(20000),
-  ]);
-  const tally = (rows: Array<{ university_id: string | null }> | null) => {
-    const counts = new Map<string, number>();
-    for (const row of rows ?? []) if (row.university_id) counts.set(row.university_id, (counts.get(row.university_id) ?? 0) + 1);
-    return counts;
-  };
-  const responses = tally(responsesQuery.data);
-  const contacts = tally(contactsQuery.data);
+  const full = await supabase.from("intro_responses").select(`${BASE}, status, read_at, contact_id`).order("created_at", { ascending: false }).limit(2000);
+  const migrationMissing = Boolean(full.error);
+  const fallback = migrationMissing ? await supabase.from("intro_responses").select(BASE).order("created_at", { ascending: false }).limit(2000) : null;
+  const all = (((fallback ?? full).data ?? []) as unknown as Row[]).map((row) => ({ ...row, status: row.status ?? "new", read_at: row.read_at ?? null, contact_id: row.contact_id ?? null }));
   const needle = q.toLowerCase();
-  const coded = ((codedQuery.data ?? []) as unknown as Coded[])
-    .filter((row) => row.university && (!needle || row.university.name.toLowerCase().includes(needle)))
-    .sort((a, b) =>
-      (responses.get(b.university_id) ?? 0) - (responses.get(a.university_id) ?? 0)
-      || Number(contacts.has(b.university_id)) - Number(contacts.has(a.university_id))
-      || a.university!.name.localeCompare(b.university!.name));
-  const codedIds = new Set(coded.map((row) => row.university_id));
-  const extra = q.length >= 2
-    ? (((await supabase.from("universities").select("id, name, city, state").eq("source", "ipeds").ilike("name", `%${q.replace(/[%_]/g, "")}%`).order("name").limit(15)).data ?? []) as School[]).filter((school) => !codedIds.has(school.id))
-    : [];
-  const site = serverEnv.outreachSiteUrl();
-  const total = responses.size;
+  const rows = all
+    .filter((row) => inView(row, view))
+    .filter((row) => !needle || [row.full_name, row.organization, row.email, row.role, row.university?.name ?? ""].some((value) => value.toLowerCase().includes(needle)));
+  const counts = new Map<View, number>(VIEWS.map((item) => [item, all.filter((row) => inView(row, item)).length]));
+  const open = all.filter((row) => row.status === "new" || row.status === "contacted" || row.status === "meeting");
+  const now = new Date(requestTime());
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={<Link href="/admin/outreach" className="hover:text-ink">Universities</Link>}
-        title="School forms"
-        description="Each school has its own chapter interest form. The link goes in outreach emails, and responses land on that school's page."
-        actions={<Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk list</Link>}
+        eyebrow={<Link href="/admin/outreach" className="hover:text-ink">Outreach</Link>}
+        title="Forms"
+        description="Chapters that filled out the interest form from your emails. Open one to read it, reply, and track where it stands."
+        actions={
+          <div className="flex items-center gap-4">
+            <Link href="/admin/outreach/stats" className="text-sm text-ink-2 hover:text-ink">Email stats</Link>
+            <Link href="/admin/outreach/forms/links" className="text-sm text-ink-2 hover:text-ink">Form links</Link>
+          </div>
+        }
       />
+      {migrationMissing ? <Notice tone="warning" title="Run npx supabase db push">Statuses, read tracking, and notes need the newest migration. Until then every submission shows as new.</Notice> : null}
+      {fallback?.error ? <p className="text-sm text-danger">{fallback.error.message}</p> : null}
 
-      <form className="flex gap-2" role="search">
-        <Input name="q" defaultValue={q} placeholder="Find a school" aria-label="Find a school" className="max-w-md" />
-        <Button type="submit" variant="secondary"><Search className="size-4" aria-hidden />Search</Button>
-        {q ? <Link href="/admin/outreach/forms" className="self-center text-sm text-ink-3 hover:text-ink">Clear</Link> : null}
-      </form>
+      <StatGrid>
+        <Stat label="Unread" value={counts.get("unread") ?? 0} tone={(counts.get("unread") ?? 0) > 0 ? "warning" : undefined} />
+        <Stat label="Waiting on you" value={counts.get("new") ?? 0} hint="Status is still new" />
+        <Stat label="Want a demo" value={open.filter((row) => row.interest === "demo").length} hint="Not yet closed out" />
+        <Stat label="Signed up" value={counts.get("signed_up") ?? 0} hint={`${all.length} submission${all.length === 1 ? "" : "s"} total`} tone={(counts.get("signed_up") ?? 0) > 0 ? "positive" : undefined} />
+      </StatGrid>
 
-      {extra.length > 0 ? (
-        <Card>
-          <CardHeader title="No form yet" description="These schools match your search but don't have a form link. Make one and it's ready to share." />
-          <ul className="divide-y divide-line">
-            {extra.map((school) => (
-              <li key={school.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-ink">{school.name}</p>
-                  <p className="text-[13px] text-ink-3">{place(school) || "United States"}</p>
-                </div>
-                <form action={createIntroForm.bind(null, school.id)}>
-                  <SubmitButton size="sm" variant="secondary" pendingLabel="Making">Make form link</SubmitButton>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav className="flex flex-wrap gap-2" aria-label="Filter forms">
+          {VIEWS.map((item) => (
+            <Link
+              key={item}
+              href={hrefFor(item, q)}
+              aria-current={item === view ? "page" : undefined}
+              className={item === view ? "rounded-md border border-accent px-3 py-1.5 text-sm text-ink" : "rounded-md border border-line px-3 py-1.5 text-sm text-ink-2 hover:text-ink"}
+            >
+              {VIEW_LABEL[item]}
+              <span className="ml-1.5 text-ink-3 tnum">{counts.get(item) ?? 0}</span>
+            </Link>
+          ))}
+        </nav>
+        <form className="flex gap-2" role="search">
+          {view !== "inbox" ? <input type="hidden" name="view" value={view} /> : null}
+          <Input name="q" defaultValue={q} placeholder="Name, chapter, school, email" aria-label="Search forms" className="w-64" />
+          <Button type="submit" variant="secondary"><Search className="size-4" aria-hidden />Search</Button>
+        </form>
+      </div>
 
-      {coded.length === 0 ? (
-        <EmptyState icon={ClipboardList} title={q ? "No school forms match" : "No school forms yet"}>
-          {q ? "Try another name, or make a form for a school above." : "A form is made the first time you open a school's page. Search for a school to make one now."}
+      {rows.length === 0 ? (
+        <EmptyState icon={ClipboardList} title={all.length === 0 ? "No forms yet" : "Nothing here"}>
+          {all.length === 0 ? "When a chapter fills out the form linked in your emails, it shows up here." : q ? "No submissions match that search." : "No submissions in this view."}
         </EmptyState>
       ) : (
         <Card>
-          <CardHeader title={`${coded.length} school form${coded.length === 1 ? "" : "s"}`} description={`${total} school${total === 1 ? " has" : "s have"} responses. Schools with responses come first, then schools you have contacts at.`} />
           <ul className="divide-y divide-line">
-            {coded.map((row) => {
-              const url = `${site}/intro/${row.intro_code}`;
-              const count = responses.get(row.university_id) ?? 0;
-              return (
-                <li key={row.university_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
-                  <div className="min-w-0">
-                    <Link href={`/admin/outreach/schools/${row.university_id}`} className="font-medium text-ink hover:underline">{row.university!.name}</Link>
-                    <p className="text-[13px] text-ink-3">{place(row.university!) || "United States"}</p>
-                    <a href={url} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate font-mono text-[12px] text-accent underline-offset-2 hover:underline">
-                      {url}
-                      <ExternalLink className="size-3 shrink-0" aria-hidden />
-                    </a>
+            {rows.map((row) => (
+              <li key={row.id}>
+                <Link href={`/admin/outreach/forms/${row.id}`} className="flex flex-wrap items-start gap-x-4 gap-y-2 px-5 py-4 hover:bg-canvas/50">
+                  <span className={row.read_at ? "mt-2 size-2 shrink-0 rounded-full bg-transparent" : "mt-2 size-2 shrink-0 rounded-full bg-accent"} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className={row.read_at ? "text-ink" : "font-semibold text-ink"}>{row.organization}</span>
+                      <span className="text-[13px] text-ink-3">at {row.university?.name ?? "Unknown school"}</span>
+                      {!row.read_at ? <span className="sr-only">Unread</span> : null}
+                    </div>
+                    <p className="mt-0.5 text-[13px] text-ink-2">{row.full_name}, {row.role} · {row.email}</p>
+                    {row.notes ? <p className="mt-1 line-clamp-1 text-[13px] text-ink-3">{row.notes}</p> : null}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <Badge tone={row.interest === "demo" ? "positive" : row.interest === "later" ? "neutral" : "info"}>{FORM_INTEREST_LABEL[row.interest] ?? row.interest}</Badge>
+                      {row.council ? <Badge>{row.council}</Badge> : null}
+                      {row.member_count != null ? <Badge>{row.member_count} members</Badge> : null}
+                      <span className="ml-1 inline-flex items-center gap-1.5 text-ink-3" aria-label="Preferred contact">
+                        {row.prefer_email ? <Mail className="size-3.5" aria-label="Email" /> : null}
+                        {row.prefer_text ? <MessageSquare className="size-3.5" aria-label="Text" /> : null}
+                        {row.prefer_call ? <Phone className="size-3.5" aria-label="Call" /> : null}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {contacts.get(row.university_id) ? <Badge tone="neutral">{contacts.get(row.university_id)} contact{contacts.get(row.university_id) === 1 ? "" : "s"}</Badge> : null}
-                    {count > 0 ? <Badge tone="positive">{count} response{count === 1 ? "" : "s"}</Badge> : <Badge>No responses</Badge>}
-                    <CopyLink url={url} />
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <Badge tone={FORM_STATUS_TONE[row.status]}>{FORM_STATUS_LABEL[row.status]}</Badge>
+                    <time dateTime={row.created_at} title={formatDateTime(row.created_at, OUTREACH_ZONE)} className="text-[12px] text-ink-3">{formatRelative(row.created_at, now)}</time>
                   </div>
-                </li>
-              );
-            })}
+                </Link>
+              </li>
+            ))}
           </ul>
         </Card>
       )}

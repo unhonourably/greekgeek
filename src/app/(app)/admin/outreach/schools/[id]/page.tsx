@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader, Notice, PageHeader } from "@/components/ui"
 import { requireStaff } from "@/lib/auth";
 import { serverEnv } from "@/lib/env";
 import { formatDateTime } from "@/lib/format";
-import { OUTREACH_ZONE, outreachEmail } from "@/lib/outreach";
+import { FORM_HELP_LABEL, FORM_INTEREST_LABEL, OUTREACH_ZONE, outreachEmail } from "@/lib/outreach";
 import type { Finding } from "@/lib/page-facts";
 import { createClient } from "@/lib/supabase/server";
 import { ensureIntroCode, gatherUniversity, loadSchoolPhoto } from "../../actions";
@@ -59,8 +59,6 @@ const GROUPS: Array<{ kind: Finding["kind"]; title: string; empty: string }> = [
   { kind: "dues", title: "Dues", empty: "No dues figures were on the pages we read. Nothing here is an estimate." },
   { kind: "national", title: "National size", empty: "The school's pages did not give a national membership total." },
 ];
-
-const INTEREST: Record<string, string> = { demo: "Wants a demo", learn_more: "Wants more information", later: "Not right now" };
 
 export default async function SchoolPage({ params }: PageProps<"/admin/outreach/schools/[id]">) {
   await requireStaff([]);
@@ -138,7 +136,7 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
             <a href={introUrl} target="_blank" rel="noreferrer" className="break-all text-sm text-accent underline-offset-2 hover:underline">{introUrl}</a>
             <div className="flex flex-wrap items-center gap-3">
               <CopyLink url={introUrl} />
-              <Link href="/admin/outreach/forms" className="text-[13px] text-ink-3 hover:text-ink">All school forms</Link>
+              <Link href="/admin/outreach/forms/links" className="text-[13px] text-ink-3 hover:text-ink">All form links</Link>
             </div>
             <p className="text-[13px] text-ink-3">{responses.length} response{responses.length === 1 ? "" : "s"} so far.</p>
           </CardBody>
@@ -199,14 +197,14 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
       </Card>
 
       <Card>
-        <CardHeader title="Form responses" description="What chapters sent back from the link in the email." />
+        <CardHeader title="Form responses" description="What chapters sent back from the link in the email. Open one to reply or track it." actions={<Link href="/admin/outreach/forms" className="text-sm text-ink-2 hover:text-ink">All forms</Link>} />
         {responses.length === 0 ? <CardBody><p className="text-sm text-ink-3">No one has filled out the form yet.</p></CardBody> : (
           <ul className="divide-y divide-line">
             {responses.map((response) => (
               <li key={response.id} className="space-y-1 px-5 py-4 text-sm">
                 <p className="font-medium text-ink">{response.full_name} · {response.role}</p>
                 <p className="text-ink-2">{response.organization}{response.council ? ` · ${response.council}` : ""} · {formatDateTime(response.created_at, OUTREACH_ZONE)}</p>
-                <p className="text-ink-2">{INTEREST[response.interest] ?? response.interest}. Members {response.member_count ?? "not given"}{response.in_house != null ? `, ${response.in_house} in house` : ""}{response.out_of_house != null ? `, ${response.out_of_house} out of house` : ""}{response.dues ? `. Dues: ${response.dues}` : ""}.</p>
+                <p className="text-ink-2">{FORM_INTEREST_LABEL[response.interest] ?? response.interest}. Members {response.member_count ?? "not given"}{response.in_house != null ? `, ${response.in_house} in house` : ""}{response.out_of_house != null ? `, ${response.out_of_house} out of house` : ""}{response.dues ? `. Dues: ${response.dues}` : ""}.</p>
                 <p className="text-ink-2">
                   {response.email}
                   {response.phone ? ` · ${response.phone}` : ""}
@@ -214,7 +212,7 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
                   {[response.prefer_email ? "email" : null, response.prefer_text ? "text" : null, response.prefer_call ? "call" : null].filter(Boolean).join(", ")}
                   {response.best_time ? ` · ${response.best_time}` : ""}
                 </p>
-                {response.help.length > 0 ? <p className="text-ink-3">Wants help with {response.help.join(", ")}.</p> : null}
+                {response.help.length > 0 ? <p className="text-ink-3">Wants help with {response.help.map((item) => FORM_HELP_LABEL[item]?.toLowerCase() ?? item).join(", ")}.</p> : null}
                 {response.notes ? <p className="whitespace-pre-wrap text-ink-2">{response.notes}</p> : null}
               </li>
             ))}

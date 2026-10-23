@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Award,
   BookOpen,
+  Bug,
   Building2,
   ChartColumn,
   LoaderCircle,
@@ -15,6 +16,7 @@ import {
   CreditCard,
   HandHeart,
   House,
+  Inbox,
   Landmark,
   LayoutDashboard,
   ClipboardList,
@@ -59,6 +61,9 @@ const ICONS = {
   audit: ScrollText,
   closures: ClipboardList,
   outreach: Mail,
+  outreachStats: ChartColumn,
+  outreachForms: Inbox,
+  bugs: Bug,
 } satisfies Record<string, LucideIcon>;
 
 export type NavItem = { key: keyof typeof ICONS; label: string; href: string; badge?: number; exact?: boolean; tag?: string };

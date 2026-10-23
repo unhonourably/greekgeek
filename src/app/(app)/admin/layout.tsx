@@ -20,13 +20,27 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       ],
     });
   }
+  const supabase = await createClient();
+  const bugs = has("support") ? await supabase.from("bug_reports").select("id", { count: "exact", head: true }).eq("status", "new") : null;
+  const bugItem = { key: "bugs" as const, label: "Bug reports", href: "/admin/bugs", badge: bugs && !bugs.error ? bugs.count ?? 0 : 0 };
+  if (role === "support") groups.push({ label: "Support", items: [bugItem] });
   if (role === "admin") {
-    const supabase = await createClient();
-    const { count } = await supabase.from("outreach_emails").select("id", { count: "exact", head: true }).eq("direction", "reply").is("read_at", null);
-    groups.push({ label: "Growth", items: [{ key: "outreach", label: "Outreach", href: "/admin/outreach", badge: count ?? 0 }] });
+    const [{ count }, forms] = await Promise.all([
+      supabase.from("outreach_emails").select("id", { count: "exact", head: true }).eq("direction", "reply").is("read_at", null),
+      supabase.from("intro_responses").select("id", { count: "exact", head: true }).is("read_at", null),
+    ]);
+    groups.push({
+      label: "Growth",
+      items: [
+        { key: "outreach", label: "Outreach", href: "/admin/outreach", badge: count ?? 0 },
+        { key: "outreachStats", label: "Email stats", href: "/admin/outreach/stats" },
+        { key: "outreachForms", label: "Forms", href: "/admin/outreach/forms", badge: forms.error ? 0 : forms.count ?? 0 },
+      ],
+    });
     groups.push({
       label: "Platform",
       items: [
+        bugItem,
         { key: "closures", label: "Closures", href: "/admin/closures" },
         { key: "pricing", label: "Pricing", href: "/admin/pricing" },
         { key: "audit", label: "Audit log", href: "/admin/audit" },

@@ -116,7 +116,8 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
             <Link href="/admin/outreach/sent" className="text-sm text-ink-2 hover:text-ink">Sent</Link>
             <Link href="/admin/outreach/emails" className="text-sm text-ink-2 hover:text-ink">Saved emails</Link>
             <Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk list{bulkCount > 0 ? ` (${bulkCount})` : ""}</Link>
-            <Link href="/admin/outreach/forms" className="text-sm text-ink-2 hover:text-ink">School forms</Link>
+            <Link href="/admin/outreach/stats" className="text-sm text-ink-2 hover:text-ink">Email stats</Link>
+            <Link href="/admin/outreach/forms" className="text-sm text-ink-2 hover:text-ink">Forms</Link>
             <ButtonLink href="/admin/outreach/compose" size="sm"><PenLine className="size-4" aria-hidden />Compose email</ButtonLink>
           </div>
         }

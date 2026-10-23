@@ -107,12 +107,27 @@ describe("outreach", () => {
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     const hidden = await db.as("anon", null, (tx) => tx.query("select * from public.intro_responses"));
     expect(hidden.rows).toHaveLength(0);
-    await expectDenied(db.as("anon", null, (tx) => tx.query("insert into public.intro_responses (university_id, full_name, role, organization, email, prefer_email, interest) values ($1, 'A', 'President', 'IFC', 'a@b.edu', true, 'demo')", [school.rows[0].id])), /row-level security/);
+    await expectDenied(db.as("anon", null, (tx) => tx.query("insert into public.intro_responses (university_id, full_name, role, organization, email, prefer_email, interest) values ($1, 'A', 'President', 'IFC', 'a@b.edu', true, 'demo')", [school.rows[0].id])), /row-level security|permission denied/);
     const seen = await db.asUser(admin, (tx) => tx.query<{ organization: string; member_count: number }>("select organization, member_count from public.intro_responses where id = $1", [id]));
     expect(seen.rows).toEqual([{ organization: "Sigma Chi", member_count: 80 }]);
     const page = await db.as("anon", null, (tx) => tx.query<{ university_name: string }>("select * from public.intro_university($1)", ["stanford-intro"]));
     expect(page.rows[0]?.university_name).toBe("Stanford University");
     await expectDenied(db.rpc("anon", null, "submit_intro", { ...args, p_code: "missing" }), /page not found/);
+    const alert = await db.pg.query<{ link: string }>("select link from public.notifications where user_id = $1 and dedupe_key = $2", [admin, `intro:${id}`]);
+    expect(alert.rows).toEqual([{ link: `/admin/outreach/forms/${id}` }]);
+  });
+
+  it("lets only admins track a form submission", async () => {
+    const response = await db.pg.query<{ id: string; status: string; read_at: Date | null }>("select id, status, read_at from public.intro_responses where email = 'president@stanford.edu'");
+    expect(response.rows[0]).toMatchObject({ status: "new", read_at: null });
+    const id = response.rows[0].id;
+    const blocked = await db.asUser(member, (tx) => tx.query("update public.intro_responses set status = 'contacted' where id = $1", [id]));
+    expect(blocked.rowCount).toBe(0);
+    await db.asUser(admin, (tx) => tx.query("update public.intro_responses set status = 'meeting', read_at = now(), admin_notes = 'Call Thursday', contact_id = $2 where id = $1", [id, contact]));
+    const saved = await db.pg.query<{ status: string; admin_notes: string; contact_id: string }>("select status, admin_notes, contact_id from public.intro_responses where id = $1", [id]);
+    expect(saved.rows[0]).toEqual({ status: "meeting", admin_notes: "Call Thursday", contact_id: contact });
+    await expectDenied(db.asUser(admin, (tx) => tx.query("update public.intro_responses set organization = 'Changed' where id = $1", [id])), /permission denied/);
+    await expectDenied(db.asUser(admin, (tx) => tx.query("update public.intro_responses set status = 'maybe' where id = $1", [id])), /check constraint/);
   });
 
   it("rejects a reply that is not marked received", async () => {

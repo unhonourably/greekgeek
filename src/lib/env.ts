@@ -41,6 +41,7 @@ export const serverEnv = {
   outreachSiteUrl: () => (read("OUTREACH_SITE_URL") ?? "https://greekgeek.org").replace(/\/+$/, ""),
   outreachReplyTo: () => read("OUTREACH_REPLY_TO") ?? "amare@greekgeek.org",
   emailFrom: () => read("EMAIL_FROM") ?? "Chapter <no-reply@localhost>",
+  buildId: () => read("VERCEL_GIT_COMMIT_SHA")?.slice(0, 12) ?? null,
   isProduction: () => process.env.NODE_ENV === "production",
   skipEmailConfirmation: () => process.env.NODE_ENV !== "production" && read("DEV_SKIP_EMAIL_CONFIRMATION") === "true",
 };

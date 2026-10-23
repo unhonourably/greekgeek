@@ -36,7 +36,7 @@ export default async function BulkPage() {
         actions={
           <div className="flex items-center gap-4">
             <Link href="/admin/outreach/bulk/history" className="text-sm text-ink-2 hover:text-ink">History</Link>
-            <Link href="/admin/outreach/forms" className="text-sm text-ink-2 hover:text-ink">School forms</Link>
+            <Link href="/admin/outreach/forms/links" className="text-sm text-ink-2 hover:text-ink">Form links</Link>
             <Link href="/admin/outreach/sent" className="text-sm text-ink-2 hover:text-ink">Sent</Link>
             {contacts.length > 0 ? (
               <form action={clearBulk}>

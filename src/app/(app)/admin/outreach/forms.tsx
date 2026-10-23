@@ -77,7 +77,7 @@ export function ImportForm({ action }: { action: FormAction }) {
   );
 }
 
-export function SendForm({ action, subject, body, to, from, replyTo, label, disabled, bodyClassName }: { action: FormAction; subject: string; body: string; to: string; from: string; replyTo: string; label: string; disabled?: boolean; bodyClassName?: string }) {
+export function SendForm({ action, subject, body, to, from, replyTo, label, disabled, bodyClassName, includeFormDefault }: { action: FormAction; subject: string; body: string; to: string; from: string; replyTo: string; label: string; disabled?: boolean; bodyClassName?: string; includeFormDefault?: boolean }) {
   return (
     <ActionForm action={action} className="space-y-3">
       {(state) => (
@@ -97,7 +97,7 @@ export function SendForm({ action, subject, body, to, from, replyTo, label, disa
           <Field label="Message" htmlFor="send-body">
             <Textarea id="send-body" name="body" defaultValue={body} className={bodyClassName ?? "min-h-[28rem] font-sans text-[13px] leading-relaxed"} />
           </Field>
-          <SendConfirm label={label} disabled={disabled} />
+          <SendConfirm label={label} disabled={disabled} includeFormDefault={includeFormDefault} />
         </>
       )}
     </ActionForm>

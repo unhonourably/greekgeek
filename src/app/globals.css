@@ -216,6 +216,25 @@
   animation: step-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes check-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-12deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility check-pop {
+  animation: check-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @utility chip-in {
   animation: fade-up 160ms ease-out both;
 }

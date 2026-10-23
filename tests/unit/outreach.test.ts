@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contactStatus, durationLabel, isoToZonedInput, outreachEmail, parseContacts, withFormLink, zonedInputToIso } from "@/lib/outreach";
+import { contactStatus, durationLabel, formReplyEmail, isoToZonedInput, outreachEmail, parseContacts, withFormLink, zonedInputToIso } from "@/lib/outreach";
 
 describe("outreach email", () => {
   it("fills in the first name, council, and university", () => {
@@ -87,5 +87,23 @@ describe("status and time", () => {
     expect(durationLabel("2026-10-20T15:00:00Z", "2026-10-20T15:40:00Z")).toBe("40m");
     expect(durationLabel("2026-10-20T15:00:00Z", "2026-10-20T20:00:00Z")).toBe("5h");
     expect(durationLabel("2026-10-20T15:00:00Z", "2026-10-23T15:00:00Z")).toBe("3d");
+  });
+});
+
+describe("form reply", () => {
+  it("answers a demo request with their best time and the areas they picked", () => {
+    const { subject, body } = formReplyEmail({ full_name: "Jordan Lee", organization: "Sigma Chi", interest: "demo", help: ["dues", "recruitment", "events"], best_time: "Weeknights", prefer_text: true, prefer_call: false }, "Stanford University");
+    expect(subject).toBe("Re: GreekGeek for Sigma Chi at Stanford University");
+    expect(body.startsWith("Hi Jordan,\n\nThank you for telling us about Sigma Chi.")).toBe(true);
+    expect(body).toContain("You mentioned weeknights");
+    expect(body).toContain("You said dues and finances, recruitment and events are where you'd want the most help");
+    expect(body).toContain("text or call me at (636) 515-1794");
+  });
+
+  it("keeps it short when they are not ready", () => {
+    const { body } = formReplyEmail({ full_name: "Sam", organization: "IFC", interest: "later", help: [], best_time: null, prefer_text: false, prefer_call: false }, "Duke University");
+    expect(body).toContain("now isn't the right time");
+    expect(body).not.toContain("most help");
+    expect(body).toContain("Replies to this email come straight to my inbox.");
   });
 });
