@@ -40,6 +40,12 @@ describe("school form link", () => {
     expect(body).toContain("Tell us about your chapter: https://greekgeek.org/intro/new");
   });
 
+  it("leaves out the screenshot gallery, even from an older saved draft", () => {
+    expect(outreachEmail(contact).body).not.toContain("drive.google.com/drive/folders");
+    const saved = "Hi Sam,\n\nWebsite: https://greekgeek.org\nProduct overview: https://docs.example\nProduct screenshots: https://drive.google.com/drive/folders/abc\n\nBest,\nAmare";
+    expect(withFormLink(saved, "https://greekgeek.org/intro/ku")).toBe("Hi Sam,\n\nWebsite: https://greekgeek.org\nProduct overview: https://docs.example\nTell us about your chapter: https://greekgeek.org/intro/ku\n\nBest,\nAmare");
+  });
+
   it("puts it before the sign-off in a hand-written email", () => {
     const body = withFormLink("Hi Sam,\n\nQuick note about GreekGeek.\n\nBest,\nAmare", "https://greekgeek.org/intro/ku");
     expect(body).toBe("Hi Sam,\n\nQuick note about GreekGeek.\n\nTell us about your chapter: https://greekgeek.org/intro/ku\n\nBest,\nAmare");

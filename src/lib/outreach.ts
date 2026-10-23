@@ -41,7 +41,6 @@ export function outreachEmail(contact: OutreachContact, introUrl?: string | null
       "Website: https://greekgeek.org",
       `Features: ${FEATURES_URL}`,
       "Product overview: https://docs.google.com/document/d/1Eg1HZ67C4GkPGBDOd_7RpBR6HFgUQrHfMgO8sVsvUPw/edit?usp=sharing",
-      "Product screenshots: https://drive.google.com/drive/folders/1lmZWW4olb_VC5qA6AkEgX6asN6EeelUF?usp=sharing",
       ...(introUrl ? [`Tell us about your chapter: ${introUrl}`] : []),
     ].join("\n"),
     "Thank you for your time.",
@@ -59,12 +58,13 @@ export function outreachEmail(contact: OutreachContact, introUrl?: string | null
 }
 
 const FORM_LINE = /^.*https?:\/\/\S+\/intro\/[A-Za-z0-9_-]+.*$/;
+const GALLERY_LINE = /^Product screenshots:/i;
 
 export function withFormLink(body: string, url: string | null): string {
-  const lines = body.split("\n").filter((line) => !FORM_LINE.test(line.trim()));
+  const lines = body.split("\n").filter((line) => !FORM_LINE.test(line.trim()) && !GALLERY_LINE.test(line.trim()));
   if (url) {
     const line = `Tell us about your chapter: ${url}`;
-    const after = lines.findIndex((text) => /^Product screenshots:/i.test(text.trim()));
+    const after = lines.findIndex((text) => /^Product overview:/i.test(text.trim()));
     const before = lines.findIndex((text) => /^(Thank you for your time|Best,|Thanks,)/i.test(text.trim()));
     if (after >= 0) lines.splice(after + 1, 0, line);
     else if (before >= 0) lines.splice(before, 0, line, "");
