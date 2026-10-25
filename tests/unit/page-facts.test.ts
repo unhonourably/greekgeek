@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractFindings, fraternityCountQuote, mergeFindings, sameSchool } from "@/lib/page-facts";
-import { readGreekLife } from "@/lib/university-research";
+import { greekOrgsIn, nationalHost, orgFromHandle } from "@/lib/greek-orgs";
+import { handleMatches, mentionsSchool, readGreekLife, schoolMarks, searchResults } from "@/lib/university-research";
 
 const html = `
   <html><head><title>Greek Life</title></head><body>
@@ -143,5 +144,160 @@ describe("reading one school", () => {
     expect(result.findings.some((finding) => finding.kind === "chapter" && finding.title === "Sigma Chi")).toBe(true);
     expect(result.findings.some((finding) => finding.title === "president@tcu.edu")).toBe(true);
     expect(result.findings.some((finding) => finding.quote === "50+ Fraternities and sororities")).toBe(true);
+  });
+
+  it("opens chapter websites that mention the school and skips national sites that do not", async () => {
+    const home = `<html><head><title>TCU</title></head><body><a href="/greek-life">Greek life</a></body></html>`;
+    const greek = `<html><head><title>Fraternity and Sorority Life</title></head><body>
+      <ul>
+        <li>Sigma Chi <a href="https://tcusigmachi.org/">Chapter website</a> <a href="https://www.instagram.com/tcusigmachi/" aria-label="Instagram"></a></li>
+        <li><a href="https://www.kappakappagamma.org/">Kappa Kappa Gamma</a></li>
+        <li>Footer <a href="https://www.instagram.com/tcu/">Instagram</a></li>
+      </ul>
+    </body></html>`;
+    const chapterHome = `<html><head><title>Sigma Chi at TCU</title></head><body><p>The Epsilon Lambda chapter of Sigma Chi at Texas Christian University.</p><a href="/contact">Contact us</a><a href="/recruitment">Recruitment</a><a href="/shop">Shop</a></body></html>`;
+    const contact = `<html><body><h3>Jake Miller</h3><p>Chapter President</p><a href="mailto:jake.miller@tcu.edu">Email</a><p>Rush chair: <a href="mailto:tcusigmachi.rush@gmail.com">tcusigmachi.rush@gmail.com</a></p></body></html>`;
+    const recruit = `<html><body><p>Our chapter has 145 active members.</p><p>New member dues are $1,150 per semester.</p></body></html>`;
+    const national = `<html><head><title>Kappa Kappa Gamma</title></head><body><p>Contact headquarters at hq@kkg.org.</p></body></html>`;
+    const fetchImpl = async (url: string) => {
+      const pick = (body: string) => new Response(body, { status: 200, headers: { "content-type": "text/html" } });
+      if (url === "https://www.tcu.edu" || url === "https://www.tcu.edu/") return pick(home);
+      if (url === "https://www.tcu.edu/greek-life") return pick(greek);
+      if (url.startsWith("https://tcusigmachi.org/contact")) return pick(contact);
+      if (url.startsWith("https://tcusigmachi.org/recruitment")) return pick(recruit);
+      if (url.startsWith("https://tcusigmachi.org")) return pick(chapterHome);
+      if (url.startsWith("https://www.kappakappagamma.org")) return pick(national);
+      return new Response("Missing", { status: 404, headers: { "content-type": "text/html" } });
+    };
+    const result = await readGreekLife(["tcu.edu"], fetchImpl as typeof fetch, 8_000, { schoolName: "Texas Christian University" });
+    expect(result.stats.chapterSites).toBe(1);
+    expect(result.pages.some((page) => page.kind === "chapter" && page.url.includes("/contact"))).toBe(true);
+    expect(result.pages.some((page) => page.url.includes("/shop"))).toBe(false);
+    const byEmail = new Map(result.findings.filter((finding) => finding.kind === "email").map((finding) => [finding.title, finding.detail]));
+    expect(byEmail.get("jake.miller@tcu.edu")).toBe("President · Sigma Chi · Jake Miller");
+    expect(byEmail.get("tcusigmachi.rush@gmail.com")).toBe("Recruitment Chair · Sigma Chi");
+    expect(byEmail.has("hq@kkg.org")).toBe(false);
+    expect(result.findings.some((finding) => finding.kind === "members" && finding.title === "Sigma Chi" && finding.quote?.includes("145"))).toBe(true);
+    expect(result.findings.some((finding) => finding.kind === "dues" && finding.title === "Sigma Chi" && finding.quote?.includes("$1,150"))).toBe(true);
+    const sites = result.findings.filter((finding) => finding.kind === "site");
+    expect(sites.some((finding) => finding.title === "Sigma Chi" && finding.detail === "Chapter website")).toBe(true);
+    expect(sites.some((finding) => finding.title === "Sigma Chi" && finding.detail === "Instagram" && finding.source_url.includes("tcusigmachi"))).toBe(true);
+    expect(sites.some((finding) => finding.source_url.endsWith("instagram.com/tcu"))).toBe(false);
+  });
+
+  it("follows chapter websites listed in the organization directory", async () => {
+    const home = `<html><head><title>TCU</title></head><body><p>Welcome.</p></body></html>`;
+    const search = JSON.stringify({ value: [{ Id: "7", Name: "Delta Gamma", CategoryNames: ["Panhellenic Council"], Status: "Active", Visibility: "Public", WebsiteKey: "dg", Summary: "" }] });
+    const detail = JSON.stringify({ name: "Delta Gamma", socialMedia: { ExternalWebsite: "https://tcudeltagamma.com", InstagramUrl: "https://instagram.com/tcudg" } });
+    const chapter = `<html><head><title>Delta Gamma | TCU</title></head><body><p>Delta Gamma at TCU. Email us at tcudg@gmail.com.</p></body></html>`;
+    const fetchImpl = async (url: string) => {
+      if (url === "https://www.tcu.edu" || url === "https://www.tcu.edu/") return new Response(home, { status: 200, headers: { "content-type": "text/html" } });
+      if (url.startsWith("https://engage.tcu.edu/api/discovery/search/organizations")) return new Response(search, { status: 200, headers: { "content-type": "application/json" } });
+      if (url === "https://engage.tcu.edu/api/discovery/organization/7") return new Response(detail, { status: 200, headers: { "content-type": "application/json" } });
+      if (url.startsWith("https://tcudeltagamma.com")) return new Response(chapter, { status: 200, headers: { "content-type": "text/html" } });
+      return new Response("Missing", { status: 404, headers: { "content-type": "text/html" } });
+    };
+    const result = await readGreekLife(["tcu.edu"], fetchImpl as typeof fetch, 8_000, { schoolName: "Texas Christian University" });
+    expect(result.findings.some((finding) => finding.kind === "chapter" && finding.title === "Delta Gamma")).toBe(true);
+    expect(result.findings.find((finding) => finding.title === "tcudg@gmail.com")?.detail).toBe("Chapter contact · Delta Gamma");
+    expect(result.findings.some((finding) => finding.kind === "site" && finding.detail === "Instagram" && finding.title === "Delta Gamma")).toBe(true);
+  });
+});
+
+describe("names and figures", () => {
+  it("matches whole organization names only", () => {
+    expect(greekOrgsIn("Alpha Phi Alpha and Alpha Phi").map((match) => match.name)).toEqual(["Alpha Phi Alpha", "Alpha Phi"]);
+    expect(greekOrgsIn("Kappa Delta Pi honor society")).toEqual([]);
+    expect(greekOrgsIn("Sigma Alpha Epsilon").map((match) => match.name)).toEqual(["Sigma Alpha Epsilon"]);
+  });
+
+  it("reads figures from separate blocks instead of one long run of text", () => {
+    const page = "<table><tr><td>Cost of membership</td></tr><tr><td>Average new member cost is $1,200 per semester</td></tr></table><div>Fraternity and sorority members make up 32% of undergraduate students</div>";
+    const findings = extractFindings(page, "https://www.tcu.edu/fsl", ["tcu.edu"], true);
+    expect(findings.some((finding) => finding.kind === "dues" && finding.quote?.includes("$1,200"))).toBe(true);
+    expect(findings.some((finding) => finding.kind === "members" && finding.quote?.includes("32%"))).toBe(true);
+  });
+
+  it("matches a social handle to its chapter", () => {
+    expect(handleMatches("instagram.com /tcusigmachi", "Sigma Chi")).toBe(true);
+    expect(handleMatches("instagram.com /ztatcu", "Zeta Tau Alpha")).toBe(true);
+    expect(handleMatches("instagram.com /tcu", "Sigma Chi")).toBe(false);
+  });
+
+  it("recognizes the school on a chapter site", () => {
+    const marks = schoolMarks("Texas Christian University", "tcu.edu");
+    expect(mentionsSchool(marks, "", "Sigma Chi at TCU")).toBe(true);
+    expect(mentionsSchool(marks, "", "Proud chapter at Texas Christian")).toBe(true);
+    expect(mentionsSchool(marks, "", "Kappa Kappa Gamma national headquarters")).toBe(false);
+  });
+
+  it("does not take a state name as proof of the school", () => {
+    const marks = schoolMarks("University of Missouri-Columbia", "missouri.edu");
+    expect(mentionsSchool(marks, "", "Chapters in Missouri, Kansas and Texas")).toBe(false);
+    expect(mentionsSchool(marks, "", "Sigma Nu at the University of Missouri")).toBe(true);
+    expect(mentionsSchool(marks, "missouri sigmanu org", "")).toBe(true);
+  });
+
+  it("spots national headquarters domains", () => {
+    expect(nationalHost("pibetaphi.org")).toBe(true);
+    expect(nationalHost("www.kkg.org")).toBe(true);
+    expect(nationalHost("tcusigmachi.org")).toBe(false);
+    expect(nationalHost("tcu.byx.org")).toBe(false);
+  });
+
+  it("names a chapter from its web address", () => {
+    expect(orgFromHandle("tcualphachiomega.com")).toBe("Alpha Chi Omega");
+    expect(orgFromHandle("/lambdachimizzou")).toBe("Lambda Chi Alpha");
+    expect(orgFromHandle("tcu.byx.org")).toBe("Beta Upsilon Chi");
+    expect(orgFromHandle("/tcu")).toBeNull();
+    expect(orgFromHandle("/alphaphiomega_ua")).toBeNull();
+    expect(orgFromHandle("/alabamaalphaphi")).toBe("Alpha Phi");
+  });
+
+  it("skips years, times and grade averages when counting members", () => {
+    const page = "<p>The 2026 Fraternity and Sorority Guide</p><p>Thursday 20th – Guest Speaker (PNMs and Active Members), 1:30-3:30PM</p><p>The average GPA of members exceeds 3.0 every term.</p><p>70 years and thousands of members later, we are thriving.</p><p>Our chapter has 120 members.</p>";
+    const findings = extractFindings(page, "https://www.tcu.edu/fsl", ["tcu.edu"], true).filter((finding) => finding.kind === "members");
+    expect(findings.map((finding) => finding.quote)).toEqual(["Our chapter has 120 members."]);
+    expect(fraternityCountQuote("<p>2026 Fraternity and sorority report</p>")).toBeNull();
+    const noise = "<p>Members are selected from the top 3% of students.</p><p>The chapter has members from over 30 different majors.</p><p>The house is 19,000 square feet and sleeps sixty of our members.</p>";
+    const kinds = extractFindings(noise, "https://www.tcu.edu/fsl", ["tcu.edu"], true).map((finding) => finding.kind);
+    expect(kinds).toEqual(["housing"]);
+  });
+
+  it("reads the role from the address when the page does not say", () => {
+    const findings = extractFindings('<p>Delta Gamma <a href="mailto:dgbetapsipresident@gmail.com">Email us</a></p>', "https://www.ua.edu/fsl", ["ua.edu"], true);
+    expect(findings.find((finding) => finding.kind === "email")?.detail).toBe("President · Delta Gamma");
+  });
+
+  it("reads school pages out of web search results", () => {
+    const packed = (url: string) => `a1${Buffer.from(url).toString("base64url")}`;
+    const html = [
+      `<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=x&amp;u=${packed("https://eoss.asu.edu/fsl")}&amp;ntb=1">Fraternity and Sorority Life</a></h2></li>`,
+      `<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?!&amp;&amp;u=${packed("https://www.wikipedia.org/asu")}">Elsewhere</a></h2></li>`,
+      `<li class="b_algo"><h2><a href="http://students.asu.edu/greek">Greek <strong>life</strong></a></h2></li>`,
+    ].join("");
+    expect(searchResults(html, "asu.edu")).toEqual([
+      { url: "https://eoss.asu.edu/fsl", title: "Fraternity and Sorority Life" },
+      { url: "https://students.asu.edu/greek", title: "Greek life" },
+    ]);
+  });
+
+  it("finds a Greek life page that only web search knows about", async () => {
+    const packed = `a1${Buffer.from("https://eoss.asu.edu/fsl").toString("base64url")}`;
+    const pages: Record<string, string> = {
+      "https://www.asu.edu/": "<title>ASU</title><a href='/about'>About</a>",
+      "https://eoss.asu.edu/fsl": "<title>Fraternity and Sorority Life</title><p>Sigma Chi</p><p>Questions? <a href='mailto:greeklife@asu.edu'>greeklife@asu.edu</a></p>",
+    };
+    const fake = async (url: string) => {
+      if (url.startsWith("https://www.bing.com/search")) return new Response(`<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=${packed}">FSL</a></h2></li>`, { status: 200, headers: { "content-type": "text/html" } });
+      const body = pages[url];
+      if (!body) return new Response("", { status: 404 });
+      const response = new Response(body, { status: 200, headers: { "content-type": "text/html" } });
+      Object.defineProperty(response, "url", { value: url });
+      return response;
+    };
+    const result = await readGreekLife(["asu.edu"], fake, 10_000, { schoolName: "Arizona State University" });
+    expect(result.pages.some((page) => page.url === "https://eoss.asu.edu/fsl" && page.ok)).toBe(true);
+    expect(result.findings.some((finding) => finding.kind === "email" && finding.title === "greeklife@asu.edu")).toBe(true);
   });
 });

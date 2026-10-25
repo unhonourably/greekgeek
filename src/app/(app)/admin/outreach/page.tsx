@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { SubmitButton } from "@/components/forms";
-import { ChevronDown, MailCheck, PenLine, Star } from "lucide-react";
+import { ChevronDown, ListPlus, MailCheck, PenLine, Star } from "lucide-react";
 import { RECOMMENDED_DOMAINS, RECOMMENDED_NAMES, RECOMMENDED_SCHOOLS, pickCampus } from "@/lib/recommended-schools";
 import { Badge, ButtonLink, Input, Notice, PageHeader, Stat, StatGrid } from "@/components/ui";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { gatherUniversity, loadSchoolPhoto } from "./actions";
+import { addStateToBulk } from "./bulk-action";
+import { newContactIds, STATES } from "./state-contacts";
+import { AUTOPILOT_AT_ONCE, AUTOPILOT_SEND_AT, bulkWaiting, readAutopilot, totalSchools } from "./autopilot";
+import { AutopilotPanel } from "./autopilot-panel";
+import { GatherAll, type GatherTarget } from "./gather-all";
 import { SchoolPhoto } from "./school-photo";
 
-const STATES = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"];
 const PAGE_SIZE = 24;
 
-export const maxDuration = 60;
+export const maxDuration = 150;
 
 type School = { id: string; name: string; city: string | null; state: string | null; email_domains: string[] };
 type Research = { university_id: string; image_url: string | null; research_status: string; chapters_found: number; emails_found: number; facts_found: number };
@@ -89,6 +93,31 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
   const pickedResearch = pickedIds.length
     ? new Map((((await supabase.from("university_outreach").select("university_id, image_url, research_status, chapters_found, emails_found, facts_found").in("university_id", pickedIds)).data ?? []) as Research[]).map((row) => [row.university_id, row]))
     : new Map<string, Research>();
+  const gatherTargets: GatherTarget[] = [];
+  if (state && !migrationMissing) {
+    for (let from = 0; from < 3000; from += 1000) {
+      const { data } = await supabase.from("universities").select("id, name").eq("source", "ipeds").eq("state", state).order("name").range(from, from + 999);
+      const rows = (data ?? []) as Array<{ id: string; name: string }>;
+      gatherTargets.push(...rows.map((row) => ({ id: row.id, name: row.name, status: null, finishedAt: null })));
+      if (rows.length < 1000) break;
+    }
+    const byId = new Map(gatherTargets.map((target) => [target.id, target]));
+    const ids = [...byId.keys()];
+    const chunks = Array.from({ length: Math.ceil(ids.length / 200) }, (_, index) => ids.slice(index * 200, index * 200 + 200));
+    const statuses = await Promise.all(chunks.map((chunk) => supabase.from("university_outreach").select("university_id, research_status, research_finished_at").in("university_id", chunk)));
+    for (const result of statuses) {
+      for (const row of (result.data ?? []) as Array<{ university_id: string; research_status: string; research_finished_at: string | null }>) {
+        const target = byId.get(row.university_id);
+        if (target) {
+          target.status = row.research_status;
+          target.finishedAt = row.research_finished_at;
+        }
+      }
+    }
+  }
+  const autopilot = !state && !migrationMissing ? await readAutopilot(supabase) : null;
+  const autopilotExtras = autopilot?.row ? await Promise.all([bulkWaiting(supabase), autopilot.row.schools_total > 0 ? Promise.resolve(autopilot.row.schools_total) : totalSchools(supabase)]) : null;
+  const stateNew = state && !migrationMissing ? (await newContactIds(supabase, gatherTargets.map((target) => target.id))).length : 0;
   const bulkCount = (await supabase.from("outreach_contacts").select("id", { count: "exact", head: true }).not("bulk_added_at", "is", null)).count ?? 0;
   const { data: emailedData } = await supabase.from("outreach_contacts").select("university_id, university, replies").gt("emails_sent", 0).limit(20000);
   const emailedById = new Map<string, Reach>();
@@ -110,7 +139,7 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
     <div className="space-y-6">
       <PageHeader
         title="Universities"
-        description="Accredited U.S. schools already in GreekGeek. Photos load from Wikipedia. Gather info reads one school's own site when you ask it to."
+        description="Accredited U.S. schools already in GreekGeek. Photos load from Wikipedia. Gather info reads the school's site, its organization directory, and the chapter websites they link to."
         actions={
           <div className="flex items-center gap-4">
             <Link href="/admin/outreach/sent" className="text-sm text-ink-2 hover:text-ink">Sent</Link>
@@ -140,6 +169,29 @@ export default async function OutreachPage({ searchParams }: PageProps<"/admin/o
         </select>
         <button type="submit" className="h-9 rounded-md border border-line-strong px-3 text-sm text-ink hover:bg-subtle">Search</button>
       </form>
+
+      {state && gatherTargets.length > 0 ? <GatherAll key={state} schools={gatherTargets} state={state} /> : !state && !migrationMissing ? <p className="-mt-3 text-[13px] text-ink-3">Pick a state to gather every school in it at once.</p> : null}
+
+      {autopilot?.row && autopilotExtras ? <AutopilotPanel key={`${autopilot.row.status}-${autopilot.row.started_at ?? ""}`} initial={autopilot.row} initialWaiting={autopilotExtras[0]} totalSchools={autopilotExtras[1]} sendAt={AUTOPILOT_SEND_AT} atOnce={AUTOPILOT_AT_ONCE} /> : autopilot?.missing ? <p className="-mt-3 text-[13px] text-ink-3">Run npx supabase db push to turn on autopilot for every state.</p> : null}
+
+      {state && !migrationMissing ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-5 py-4">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold text-ink"><ListPlus className="size-4 text-accent" aria-hidden />Bulk list for {state}</h2>
+            <p className="mt-0.5 text-[13px] text-ink-3">
+              {stateNew > 0
+                ? `${stateNew.toLocaleString("en-US")} saved contact${stateNew === 1 ? "" : "s"} in ${state} ${stateNew === 1 ? "has" : "have"} never been emailed and ${stateNew === 1 ? "is" : "are"} not on the list yet. Already emailed and do-not-contact addresses are left off.`
+                : `Every saved contact in ${state} has been emailed or is already on the list. Gather more schools to find new ones.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <form action={addStateToBulk.bind(null, state)}>
+              <SubmitButton size="sm" pendingLabel="Adding" disabled={stateNew === 0}><ListPlus className="size-4" aria-hidden />Add all {stateNew.toLocaleString("en-US")} new contacts</SubmitButton>
+            </form>
+            <Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk list{bulkCount > 0 ? ` (${bulkCount})` : ""}</Link>
+          </div>
+        </div>
+      ) : null}
 
       {picked.length > 0 ? (
         <details open className="group rounded-lg border border-line bg-surface">

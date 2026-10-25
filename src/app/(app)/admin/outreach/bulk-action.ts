@@ -5,6 +5,7 @@ import type { ActionState } from "@/lib/action-state";
 import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { deliverBulk, OFF_BULK, queueOutreach, refreshOutreach } from "./send";
+import { newContactIds, queueNewContacts, stateSchoolIds } from "./state-contacts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -20,10 +21,19 @@ export async function setBulk(formData: FormData): Promise<void> {
   if (ids.length === 0) return;
   const supabase = await createClient();
   if (formData.get("on") === "1") {
-    await supabase.from("outreach_contacts").update({ bulk_added_at: new Date().toISOString() }).in("id", ids).eq("do_not_contact", false).is("bulk_added_at", null);
+    const adding = supabase.from("outreach_contacts").update({ bulk_added_at: new Date().toISOString() }).in("id", ids).eq("do_not_contact", false).is("bulk_added_at", null);
+    await (ids.length > 1 ? adding.eq("emails_sent", 0) : adding);
   } else {
     await supabase.from("outreach_contacts").update(OFF_BULK).in("id", ids);
   }
+  refreshBulk();
+}
+
+export async function addStateToBulk(state: string): Promise<void> {
+  await requireStaff([]);
+  if (!/^[A-Z]{2}$/.test(state)) return;
+  const supabase = await createClient();
+  await queueNewContacts(supabase, await newContactIds(supabase, await stateSchoolIds(supabase, state)));
   refreshBulk();
 }
 

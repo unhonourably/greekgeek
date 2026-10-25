@@ -1,7 +1,7 @@
-import { GREEK_ORGS } from "@/lib/greek-orgs";
+import { greekOrgsIn, lastGreekOrg } from "@/lib/greek-orgs";
 
 export type Finding = {
-  kind: "chapter" | "dues" | "members" | "housing" | "national" | "email";
+  kind: "chapter" | "dues" | "members" | "housing" | "national" | "email" | "site";
   title: string;
   detail: string | null;
   quote: string | null;
@@ -86,16 +86,20 @@ const NOT_NAME = new Set([
   "chair", "treasurer", "secretary", "committee", "social", "member", "members", "educator", "educators", "new", "help", "password", "family",
   "alumni", "chief", "justice", "risk", "management", "finance", "records", "programming", "public", "outreach", "engagement", "inclusion",
   "philanthropy", "service", "scholarship", "development", "relations", "communications", "membership", "standards", "conduct", "office",
+  "tri", "chapter", "house", "rush", "sorority", "fraternities", "sororities", "pan", "hellenic", "inc", "incorporated", "sisterhood", "brotherhood",
+  "sponsorship", "references", "reference", "contact", "us", "info", "general", "inquiries", "questions", "submit", "send", "message",
+  "support", "director", "advising", "assembly", "promenade", "crimson", "facility", "facilities", "operations", "student", "initiatives",
 ]);
 
-function nameFor(email: string, hit: EmailHit): string | null {
+export function nameFor(email: string, hit: EmailHit): string | null {
   const local = email.split("@")[0].toLowerCase().replace(/[^a-z]/g, "");
   const candidates = [hit.label ?? "", hit.before.slice(-140), hit.after.slice(0, 60)];
   for (const source of candidates) {
     const names = [...source.matchAll(/\b(?=([A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)?)\s+(?:[A-Z]\.\s+)?([A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)?)\b)/g)].reverse();
     for (const matched of names) {
       const [first, last] = [matched[1], matched[2]];
-      if (NOT_NAME.has(first.toLowerCase()) || NOT_NAME.has(last.toLowerCase())) continue;
+      const plain = (word: string) => word.toLowerCase().replace(/'s$/, "").replace(/[^a-z]/g, "");
+      if (NOT_NAME.has(plain(first)) || NOT_NAME.has(plain(last)) || /'s$/i.test(last)) continue;
       const firstKey = first.toLowerCase().replace(/[^a-z]/g, "");
       const lastKey = last.toLowerCase().replace(/[^a-z]/g, "");
       if (local.includes(lastKey.slice(0, 4)) || local.includes(firstKey.slice(0, 4)) || local.startsWith(`${firstKey[0]}${lastKey.slice(0, 3)}`)) return `${first} ${last}`;
@@ -107,14 +111,14 @@ function nameFor(email: string, hit: EmailHit): string | null {
 const LETTER = "(?:Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)";
 const LETTERS_TAIL = new RegExp(`\\b(${LETTER}(?:\\s+${LETTER}){1,3}(?:\\s+(?:Fraternity|Sorority|Sinfonia|Colony|Chapter|Inc\\.?)){0,2})(?:\\s+(?:Email|E-mail|Contact))?[\\s:,-]*$`);
 
-function lettersBefore(before: string): string | null {
+export function lettersBefore(before: string): string | null {
   const tail = before.replace(/\s+/g, " ").trimEnd().slice(-80);
   const matched = tail.match(LETTERS_TAIL);
   if (!matched) return null;
   return matched[1].trim().slice(0, 120);
 }
 
-function councilFromEmail(email: string): string | null {
+export function councilFromEmail(email: string): string | null {
   const local = email.split("@")[0].toLowerCase().replace(/^(tcu|ua|mizzou|uga|lsu|osu|psu)/, "");
   if (/^ifc/.test(local)) return "IFC";
   if (/^(panhel|pha|apa|cpc|phc)/.test(local)) return "Panhellenic";
@@ -123,7 +127,7 @@ function councilFromEmail(email: string): string | null {
   return null;
 }
 
-function councilFromText(text: string): string | null {
+export function councilFromText(text: string): string | null {
   const value = text.toLowerCase();
   if (/\bifc\b|interfraternity/.test(value)) return "IFC";
   if (/national pan-?hellenic|\bnphc\b/.test(value)) return "NPHC";
@@ -148,6 +152,13 @@ export function htmlToText(html: string): string {
     .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCharCode(parseInt(n, 16)))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function blockLines(html: string): string[] {
+  const marked = html
+    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<(?:br|hr)\b[^>]*>|<\/(?:p|li|h[1-6]|tr|td|th|div|section|article|dd|dt|blockquote|figcaption|caption|header|footer|nav|aside)>/gi, "\n");
+  return marked.split("\n").map((line) => htmlToText(line)).filter((line) => line.length > 0);
 }
 
 export function pageTitle(html: string): string | null {
@@ -177,8 +188,17 @@ export function pageLinks(html: string, base: string): string[] {
 }
 
 export function fraternityCountQuote(html: string): string | null {
-  const matched = htmlToText(html).match(/\b\d{1,4}\+?\s+fraternit(?:y|ies)(?:\s+and\s+sororit(?:y|ies))?/i);
+  const text = htmlToText(html);
+  const matched = text.match(/\b(?!(?:19|20)\d{2}\b)\d{1,4}\+?\s+(?:greek\s+)?(?:fraternities(?:\s+and\s+sororities)?|sororities(?:\s+and\s+fraternities)?|greek[- ]letter (?:organizations|chapters)|greek (?:organizations|chapters))/i)
+    ?? text.match(/\b(?!(?:19|20)\d{2}\b)\d{1,4}\+?\s+(?:chapters|organizations)\s+(?:across|in|within)\s+(?:our|the|four|three|five|two|\d)\s+(?:governing\s+)?councils?/i);
   return matched ? matched[0] : null;
+}
+
+export function greekShareQuote(html: string): string | null {
+  const text = htmlToText(html);
+  const matched = text.match(/[^.]{0,80}\b\d{1,2}(?:\.\d)?\s?(?:%|percent)\s+of\s+(?:our\s+|the\s+|all\s+)?(?:total\s+)?(?:undergraduate|undergrad|student|students|the student body|campus)[^.]{0,80}/i);
+  if (!matched || !looksGreek(matched[0])) return null;
+  return matched[0].trim().slice(0, 240);
 }
 
 export function sameSchool(hostname: string, domain: string): boolean {
@@ -194,17 +214,6 @@ export function looksGreek(value: string): boolean {
 
 function windowAround(text: string, index: number, radius = 140): string {
   return text.slice(Math.max(0, index - radius), Math.min(text.length, index + radius)).replace(/\s+/g, " ").trim();
-}
-
-function sentenceAt(text: string, index: number): string {
-  const start = Math.max(text.lastIndexOf(". ", index), text.lastIndexOf("! ", index), text.lastIndexOf("? ", index));
-  const from = start === -1 ? 0 : start + 2;
-  let end = text.length;
-  for (const mark of [". ", "! ", "? "]) {
-    const at = text.indexOf(mark, index);
-    if (at !== -1) end = Math.min(end, at + 1);
-  }
-  return text.slice(from, end).trim().slice(0, 320);
 }
 
 const ROLES: [RegExp, string][] = [
@@ -223,7 +232,34 @@ const ROLES: [RegExp, string][] = [
   [/\bchair\b/g, "Chair"],
 ];
 
-function roleNear(text: string): string {
+const COMPOUND_ROLE = /\b(recruitment|rush|philanthropy|social|risk management|new member|membership|scholarship|academic|alumni relations|public relations|marketing|community service|service|standards|programming|diversity|housing|finance|parent relations)\s+(chair(?:man|woman|person)?|director|coordinator|educator|officer|manager)\b/g;
+
+function titleCase(value: string): string {
+  return value.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
+const EMAIL_ROLES: Array<[RegExp, string]> = [
+  [/vicepres|(^|[^a-z])vp([^a-z]|$)|vp$/, "Vice President"],
+  [/president|prez|pres$/, "President"],
+  [/recruit|rush|pnm/, "Recruitment"],
+  [/treasur|finance/, "Treasurer"],
+  [/secretar/, "Secretary"],
+  [/philanthrop/, "Philanthropy Chair"],
+  [/advis/, "Advisor"],
+  [/newmember|nme$|memberedu/, "New Member Educator"],
+];
+
+export function specificRole(role: string, email: string): string {
+  if (role !== "Greek life office" && role !== "Chapter contact" && role !== "Public contact") return role;
+  return roleFromEmail(email) ?? role;
+}
+
+export function roleFromEmail(email: string): string | null {
+  const local = email.split("@")[0].toLowerCase();
+  return EMAIL_ROLES.find(([pattern]) => pattern.test(local))?.[1] ?? null;
+}
+
+export function roleNear(text: string): string {
   const value = text.toLowerCase();
   let best: { at: number; role: string } | null = null;
   for (const [pattern, role] of ROLES) {
@@ -231,24 +267,25 @@ function roleNear(text: string): string {
       if (!best || matched.index > best.at) best = { at: matched.index, role };
     }
   }
+  let compound: { at: number; end: number; role: string } | null = null;
+  for (const matched of value.matchAll(COMPOUND_ROLE)) {
+    const area = matched[1] === "rush" ? "recruitment" : matched[1];
+    const title = /^chair/.test(matched[2]) ? "chair" : matched[2];
+    compound = { at: matched.index, end: matched.index + matched[0].length, role: titleCase(`${area} ${title}`) };
+  }
+  if (compound && (!best || best.at <= compound.end)) return compound.role;
   return best?.role ?? "Greek life office";
 }
 
-function orgNear(text: string): string | null {
-  const lower = text.toLowerCase();
-  let best: { end: number; name: string } | null = null;
-  for (const name of GREEK_ORGS) {
-    const at = lower.lastIndexOf(name.toLowerCase());
-    if (at === -1) continue;
-    const end = at + name.length;
-    if (!best || end > best.end || (end === best.end && name.length > best.name.length)) best = { end, name };
-  }
-  return best?.name ?? null;
+export function orgNear(text: string): string | null {
+  return lastGreekOrg(text);
 }
+
+const DUES_WORDS = /\b(dues|cost of membership|membership (?:costs?|fees?|dues)|new member (?:fees?|dues|costs?)|initiation (?:fees?|costs?)|chapter (?:fees?|costs?)|national (?:fees?|dues)|average (?:cost|dues)|financial (?:obligation|commitment)|semester(?:ly)? (?:fees?|costs?)|parlor fee|social fee)\b/;
+const MONEY = /\$\s?\d[\d,]*(?:\.\d{2})?|\d[\d,]*\s*(?:dollars|per\s+(?:semester|term|year|month|quarter))/;
 
 export function extractFindings(html: string, sourceUrl: string, domains: string[], greekPage: boolean): Finding[] {
   const text = htmlToText(html);
-  const lower = text.toLowerCase();
   const findings: Finding[] = [];
   const seen = new Set<string>();
   const push = (finding: Finding) => {
@@ -259,10 +296,9 @@ export function extractFindings(html: string, sourceUrl: string, domains: string
   };
 
   if (greekPage) {
-    for (const name of GREEK_ORGS) {
-      const at = lower.indexOf(name.toLowerCase());
-      if (at === -1) continue;
-      push({ kind: "chapter", title: name, detail: null, quote: windowAround(text, at, 90), source_url: sourceUrl });
+    for (const match of greekOrgsIn(text)) {
+      if (findings.some((finding) => finding.kind === "chapter" && finding.title === match.name)) continue;
+      push({ kind: "chapter", title: match.name, detail: null, quote: windowAround(text, match.at, 90), source_url: sourceUrl });
     }
   }
 
@@ -276,7 +312,10 @@ export function extractFindings(html: string, sourceUrl: string, domains: string
     const school = domains.some((item) => domain === item || domain.endsWith(`.${item}`));
     const letters = lettersBefore(`${hit.before} ${label}`);
     const chapter = letters ?? orgNear(near) ?? orgNear(around);
-    if (!school && !(PERSONAL_DOMAINS.has(domain) && greekPage && chapter)) continue;
+    const own = hit.before.slice(-160);
+    const tight = `${own.slice(own.lastIndexOf("@") + 1)} ${label}`;
+    const personalChapter = letters ?? orgNear(tight);
+    if (!school && !(PERSONAL_DOMAINS.has(domain) && greekPage && personalChapter)) continue;
     if (!greekPage && !looksGreek(around)) continue;
     emails.add(hit.email);
     const name = nameFor(hit.email, hit);
@@ -284,23 +323,37 @@ export function extractFindings(html: string, sourceUrl: string, domains: string
     push({
       kind: "email",
       title: hit.email,
-      detail: [roleNear(hit.before.slice(-100) || around), organization, name].filter(Boolean).join(" · "),
+      detail: [specificRole(roleNear(hit.before.slice(-100) || around), hit.email), organization, name].filter(Boolean).join(" · "),
       quote: around.slice(0, 240),
       source_url: sourceUrl,
     });
   }
 
   if (greekPage) {
-    const parts = text.split(/(?<=[.!?])\s+/);
+    const parts = blockLines(html).flatMap((block) => block.split(/(?<=[.!?])\s+/));
     for (const sentence of parts) {
       const line = sentence.trim();
-      if (line.length < 30 || line.length > 320 || !/\d/.test(line)) continue;
+      if (line.length < 18 || line.length > 320 || !/\d/.test(line)) continue;
       const value = line.toLowerCase();
+      if (/\b(19|20)\d{2}\b/.test(value) && !/\$|members|dues|chapters|housed|beds?\b|percent|%/.test(value)) continue;
+      const counted = value
+        .replace(/\$\s?\d[\d,]*(?:\.\d+)?/g, " ")
+        .replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm|a\.m\.|p\.m\.)/g, " ")
+        .replace(/\b\d{1,2}:\d{2}\b/g, " ")
+        .replace(/\b\d+(?:st|nd|rd|th)\b/g, " ")
+        .replace(/\b\d+\.\d+\b/g, " ")
+        .replace(/\b(?:19|20)\d{2}\b/g, " ")
+        .replace(/\b\d[\d,]*\s*(?:-|to)?\s*\d*\s*(?:years?|yrs|hours?|hrs|weeks?|days?|minutes?|mins|months?|semesters?|credit|credits|semester hours|gpa|square feet|sq\.? ?ft|feet|miles|different|majors?|states|countries|colleges|organizations|clubs|events|girls|boys|children|kids|students? organizations|on-campus)\b/g, " ")
+        .replace(/\btop\s+\d+\s?(?:%|percent)/g, " ")
+        .replace(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+\d{1,2}\b/g, " ");
+      const big = Math.max(0, ...[...counted.matchAll(/\b\d{1,3}(?:,\d{3})+|\b\d+/g)].map((matched) => Number(matched[0].replace(/,/g, ""))));
       let kind: Finding["kind"] | null = null;
-      if (/\bdues\b/.test(value) && /\$\s?\d|\d+\s*per\s+(semester|term|year|month)/.test(value)) kind = "dues";
-      else if (/in-house|out of house|out-of-house|live-in|housed|chapter house|\bbeds?\b/.test(value)) kind = "housing";
-      else if (/\bchapters?\b/.test(value) && /national|nationwide|international|across the (country|nation)/.test(value)) kind = "national";
-      else if (/\b\d{1,6}\b[^.]{0,40}\b(members|membership|undergraduates|chapter size|colony)\b/.test(value) || /\b(members|membership|chapter size|colony)\b[^.]{0,40}\b\d{1,6}\b/.test(value)) kind = "members";
+      if (DUES_WORDS.test(value) && MONEY.test(value)) kind = "dues";
+      else if (/in-house|in house|out of house|out-of-house|live-in|live in the house|lives? in|housed|chapter house|chapter facility|\bbeds?\b|sleeps|capacity of \d|houses \d/.test(value) && /\d|sixty|fifty|forty|thirty|seventy|eighty|ninety|hundred/.test(counted)) kind = "housing";
+      else if (/\bchapters?\b/.test(value) && /national|nationwide|international|worldwide|globally|united states|across the (country|nation)|north america|campuses/.test(value) && /\b\d{2,4}\b/.test(counted)) kind = "national";
+      else if (/\bmembers?(?:hip)?\b/.test(value) && big >= 50_000 && /national|nationwide|international|worldwide|globally|united states|initiated|more than|over|nearly/.test(value)) kind = "national";
+      else if (/\b\d{1,2}(?:\.\d)?\s?(?:%|percent)\s+of\s+(?:our\s+|the\s+|all\s+)?(?:total\s+)?(?:undergraduate|undergrad|students?|the student body|campus|population)/.test(counted) && (looksGreek(value) || /\bmembers?\b|community|chapters?/.test(value))) kind = "members";
+      else if (!/\bgpa\b|grade point|potential new members|\bpnms?\b/.test(value) && big >= 5 && (/\b\d{1,6}\b[^.]{0,40}\b(members|membership|undergraduates|chapter size|colony|brothers|sisters|actives|new members)\b/.test(counted) || /\b(members|membership|chapter size|colony|chapter total|total members|average chapter size)\b[^.]{0,40}\b\d{1,6}\b/.test(counted))) kind = "members";
       if (!kind) continue;
       const org = orgNear(line);
       const focused = line.length > 160 ? (line.match(/.{0,50}\d[\d,+.]*\s+\S+(?:\s+\S+){0,6}/)?.[0] ?? line.slice(0, 160)).trim() : line;
@@ -313,14 +366,28 @@ export function extractFindings(html: string, sourceUrl: string, domains: string
 
 export function mergeFindings(groups: Finding[][]): Finding[] {
   const merged: Finding[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   for (const finding of groups.flat()) {
     const key = finding.kind === "chapter" || finding.kind === "email"
       ? `${finding.kind}:${finding.title.toLowerCase()}`
-      : `${finding.kind}:${(finding.quote ?? "").toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+      : finding.kind === "site"
+        ? `site:${finding.source_url.toLowerCase().replace(/\/$/, "")}`
+        : `${finding.kind}:${(finding.quote ?? "").toLowerCase()}`;
+    const at = seen.get(key);
+    if (at !== undefined) {
+      const kept = merged[at];
+      if (finding.kind === "email" && generic(kept.detail) && !generic(finding.detail)) merged[at] = finding;
+      continue;
+    }
+    seen.set(key, merged.length);
     merged.push(finding);
   }
-  return merged.slice(0, 160);
+  const order: Finding["kind"][] = ["chapter", "email", "site", "members", "housing", "dues", "national"];
+  const capped: Finding[] = [];
+  for (const kind of order) capped.push(...merged.filter((finding) => finding.kind === kind).slice(0, kind === "email" ? 400 : 150));
+  return capped;
+}
+
+function generic(detail: string | null): boolean {
+  return !detail || /^Greek life office · Greek life$/.test(detail);
 }

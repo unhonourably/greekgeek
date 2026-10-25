@@ -254,9 +254,9 @@ async function recordOutcomes(supabase: Supabase, outcomes: Outcome[]) {
   if (delivered.length > 0) await supabase.from("outreach_contacts").update(OFF_BULK).in("id", delivered);
 }
 
-export async function deliverBulk(userId: string, includeForm: boolean): Promise<ActionState> {
+export async function deliverBulk(userId: string, includeForm: boolean, client?: Supabase): Promise<ActionState> {
   if (!serverEnv.resendApiKey()) return { error: "Sending is off because RESEND_API_KEY is not set on the server." };
-  const supabase = await createClient();
+  const supabase = client ?? await createClient();
   const { data, error } = await supabase.from("outreach_contacts").select(BULK_COLUMNS).not("bulk_added_at", "is", null).order("bulk_added_at").order("id");
   if (error) return { error: "The bulk list could not be loaded." };
   const listed = (data ?? []) as BulkContact[];

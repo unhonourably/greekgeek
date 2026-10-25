@@ -6,9 +6,9 @@ import { z } from "zod";
 import type { ActionState } from "@/lib/action-state";
 import { requireStaff } from "@/lib/auth";
 import { parseContacts, zonedInputToIso } from "@/lib/outreach";
-import { readGreekLife } from "@/lib/university-research";
 import { photoSlot, usablePhoto, wikipediaPhoto } from "@/lib/university-photo";
 import { createClient } from "@/lib/supabase/server";
+import { gatherSchool } from "./gather";
 import { deliverOutreach, introCode, randomCode, refreshOutreach } from "./send";
 
 const contactSchema = z.object({
@@ -173,78 +173,8 @@ export async function loadSchoolPhoto(universityId: string): Promise<string | nu
 
 export async function gatherUniversity(universityId: string): Promise<void> {
   await requireStaff([]);
-  const supabase = await createClient();
-  const { data: school } = await supabase.from("universities").select("id, name, email_domains").eq("id", universityId).maybeSingle();
-  if (!school) redirect("/admin/outreach");
-  const domains = ((school.email_domains ?? []) as string[]).map((domain) => domain.toLowerCase());
-  const { data: existing } = await supabase.from("university_outreach").select("research_status, research_started_at, intro_code").eq("university_id", universityId).maybeSingle();
-  const started = existing?.research_started_at ? new Date(existing.research_started_at).getTime() : 0;
-  if (existing?.research_status === "running" && Date.now() - started < 75 * 1000) redirect(`/admin/outreach/schools/${universityId}`);
-  const intro = existing?.intro_code ?? randomCode();
-  const running = { intro_code: intro, research_status: "running", research_started_at: new Date().toISOString(), research_error: null };
-  if (existing) await supabase.from("university_outreach").update(running).eq("university_id", universityId);
-  else await supabase.from("university_outreach").insert({ university_id: universityId, ...running });
-  try {
-    const result = await readGreekLife(domains, fetch, 38_000);
-    const emails = result.findings.filter((finding) => finding.kind === "email");
-    const contacts = [...new Map(emails.map((email) => {
-      const [role, organization, fullName] = (email.detail ?? "Greek life office · Greek life").split(" · ");
-      const name = fullName?.trim() ?? "";
-      return [email.title.toLowerCase(), {
-        university: String(school.name).slice(0, 160),
-        university_id: universityId,
-        organization: (organization?.trim().length >= 2 ? organization.trim() : "Greek life").slice(0, 120),
-        role: (role?.trim().length >= 2 ? role.trim() : "Greek life office").slice(0, 80),
-        full_name: name.length >= 2 ? name.slice(0, 120) : null,
-        email: email.title.toLowerCase(),
-        source_url: /^https?:\/\//i.test(email.source_url) ? email.source_url.slice(0, 500) : null,
-        notes: email.quote?.slice(0, 4000) ?? null,
-      }];
-    })).values()];
-    const { data: known } = contacts.length > 0
-      ? await supabase.from("outreach_contacts").select("id, email_normalized, role, organization, full_name").in("email_normalized", contacts.map((contact) => contact.email))
-      : { data: [] };
-    const byEmail = new Map((known ?? []).map((row) => [row.email_normalized as string, row]));
-    const fresh = contacts.filter((contact) => !byEmail.has(contact.email));
-    let saveFailed = false;
-    if (fresh.length > 0) {
-      const inserted = await supabase.from("outreach_contacts").insert(fresh);
-      if (inserted.error) {
-        for (const contact of fresh) {
-          const single = await supabase.from("outreach_contacts").insert(contact);
-          if (single.error) saveFailed = true;
-        }
-      }
-    }
-    await Promise.all(contacts.filter((contact) => byEmail.has(contact.email)).map(async (contact) => {
-      const row = byEmail.get(contact.email)!;
-      const update: Record<string, string | null> = { university: contact.university, university_id: contact.university_id, source_url: contact.source_url, notes: contact.notes };
-      if (contact.full_name && !row.full_name) update.full_name = contact.full_name;
-      if (row.role === "Greek life office" && contact.role !== "Greek life office") update.role = contact.role;
-      if (row.organization === "Greek life" && contact.organization !== "Greek life") update.organization = contact.organization;
-      const updated = await supabase.from("outreach_contacts").update(update).eq("id", row.id);
-      if (updated.error) saveFailed = true;
-    }));
-    await supabase.from("university_outreach").update({
-      research_status: "done",
-      research_finished_at: new Date().toISOString(),
-      research_error: saveFailed ? "Some emails were found but could not be saved as contacts." : result.error,
-      pages: result.pages,
-      findings: result.findings,
-      chapters_found: result.findings.filter((finding) => finding.kind === "chapter").length,
-      emails_found: emails.length,
-      facts_found: result.findings.filter((finding) => finding.kind !== "chapter" && finding.kind !== "email").length,
-    }).eq("university_id", universityId);
-  } catch (error) {
-    await supabase.from("university_outreach").update({
-      research_status: "failed",
-      research_finished_at: new Date().toISOString(),
-      research_error: error instanceof Error ? error.message.slice(0, 300) : "The read failed.",
-    }).eq("university_id", universityId);
-  }
-  revalidatePath("/admin/outreach");
-  revalidatePath(`/admin/outreach/schools/${universityId}`);
-  redirect(`/admin/outreach/schools/${universityId}`);
+  const summary = await gatherSchool(await createClient(), universityId);
+  redirect(summary.status === "missing" ? "/admin/outreach" : `/admin/outreach/schools/${universityId}`);
 }
 
 export async function deleteLoggedReply(contactId: string, emailId: string): Promise<void> {

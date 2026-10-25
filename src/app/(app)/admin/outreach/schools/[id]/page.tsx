@@ -14,7 +14,7 @@ import { CopyLink } from "../../copy-link";
 import { SchoolPhoto } from "../../school-photo";
 import { WriteLetters } from "../../write-dialog";
 
-export const maxDuration = 60;
+export const maxDuration = 150;
 
 type School = { id: string; name: string; city: string | null; state: string | null; email_domains: string[] };
 type Outreach = {
@@ -22,7 +22,7 @@ type Outreach = {
   research_status: string;
   research_finished_at: string | null;
   research_error: string | null;
-  pages: Array<{ url: string; ok: boolean; title: string | null }>;
+  pages: Array<{ url: string; ok: boolean; title: string | null; kind?: "school" | "chapter" | "directory" }>;
   findings: Finding[];
   chapters_found: number;
   emails_found: number;
@@ -84,6 +84,24 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
   const code = outreach?.intro_code ?? await ensureIntroCode(id);
   const introUrl = `${serverEnv.outreachSiteUrl()}/intro/${code}`;
   const findings = outreach?.findings ?? [];
+  const listed = new Set(contacts.map((contact) => contact.email.toLowerCase()));
+  const elsewhere = [...new Set(findings.filter((finding) => finding.kind === "email").map((finding) => finding.title.toLowerCase()))].filter((email) => !listed.has(email));
+  for (let i = 0; i < elsewhere.length; i += 150) {
+    const chunk = elsewhere.slice(i, i + 150);
+    const [{ data: shared }, sharedBulk] = await Promise.all([
+      supabase.from("outreach_contacts").select("id, full_name, organization, role, email, emails_sent, replies, do_not_contact").in("email_normalized", chunk),
+      bulkReady ? supabase.from("outreach_contacts").select("id, bulk_subject, bulk_body").in("email_normalized", chunk).not("bulk_added_at", "is", null) : Promise.resolve({ data: [] }),
+    ]);
+    contacts.push(...((shared ?? []) as Contact[]));
+    for (const row of sharedBulk.data ?? []) queued.set(row.id as string, row as { bulk_subject: string | null; bulk_body: string | null });
+  }
+  contacts.sort((a, b) => a.organization.localeCompare(b.organization));
+  const siteRows = findings.filter((finding) => finding.kind === "site");
+  const sitesByChapter = [...siteRows.reduce((map, finding) => map.set(finding.title, [...(map.get(finding.title) ?? []), finding]), new Map<string, Finding[]>()).entries()]
+    .sort((a, b) => Number(b[1].some((finding) => finding.detail === "Chapter website")) - Number(a[1].some((finding) => finding.detail === "Chapter website")) || a[0].localeCompare(b[0]));
+  const opened = (outreach?.pages ?? []).filter((page, index, all) => all.findIndex((other) => other.url === page.url) === index);
+  const chapterPages = opened.filter((page) => page.kind === "chapter" && page.ok);
+  const chapterSiteCount = siteRows.filter((finding) => finding.detail === "Chapter website").length;
   const from = serverEnv.outreachFrom() ?? serverEnv.emailFrom();
   const drafts = contacts.map((contact) => {
     const mail = outreachEmail({ full_name: contact.full_name, organization: contact.organization, university: school.name }, introUrl);
@@ -102,7 +120,8 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
       inBulk: bulkReady ? queued.has(contact.id) : null,
     };
   });
-  const addable = drafts.filter((draft) => !draft.blocked && !draft.inBulk).map((draft) => draft.id);
+  const addable = drafts.filter((draft) => !draft.blocked && !draft.inBulk && draft.emailsSent === 0).map((draft) => draft.id);
+  const alreadySent = drafts.filter((draft) => !draft.blocked && !draft.inBulk && draft.emailsSent > 0).length;
 
   return (
     <div className="space-y-6">
@@ -145,7 +164,7 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
 
       {outreach?.research_status === "failed" ? <Notice tone="danger">{outreach.research_error ?? "The read failed."}</Notice> : null}
       {outreach?.research_status === "done" && outreach.research_error ? <Notice>{outreach.research_error}</Notice> : null}
-      {outreach?.research_finished_at ? <p className="text-[13px] text-ink-3">Last read {formatDateTime(outreach.research_finished_at, OUTREACH_ZONE)} · {outreach.pages.filter((page) => page.ok).length} pages opened · {outreach.chapters_found} chapters · {outreach.emails_found} emails · {outreach.facts_found} figures</p> : <p className="text-sm text-ink-3">Nothing has been read yet. Gather info reads only the public site for this university. It does not invent dues or membership numbers.</p>}
+      {outreach?.research_finished_at ? <p className="text-[13px] text-ink-3">Last read {formatDateTime(outreach.research_finished_at, OUTREACH_ZONE)} · {outreach.pages.filter((page) => page.ok).length} pages opened · {chapterSiteCount} chapter site{chapterSiteCount === 1 ? "" : "s"} · {outreach.chapters_found} chapters · {outreach.emails_found} emails · {outreach.facts_found} figures</p> : <p className="text-sm text-ink-3">Nothing has been read yet. Gather info reads the university&apos;s public site, its organization directory, and the chapter websites those pages link to. It does not invent dues or membership numbers.</p>}
 
       {GROUPS.map((group) => {
         const rows = findings.filter((finding) => finding.kind === group.kind);
@@ -167,26 +186,52 @@ export default async function SchoolPage({ params }: PageProps<"/admin/outreach/
         );
       })}
 
-      {outreach && outreach.pages.length > 0 ? (
-        <details className="rounded-lg border border-line bg-surface px-5 py-3 text-sm">
-          <summary className="cursor-pointer text-ink-2">Pages opened</summary>
-          <ul className="mt-3 space-y-1">
-            {outreach.pages.filter((page, index, all) => all.findIndex((other) => other.url === page.url) === index).map((page) => (
-              <li key={page.url} className="truncate">
-                <a href={page.url} target="_blank" rel="noreferrer" className={page.ok ? "text-ink-2 hover:text-ink" : "text-danger"}>{page.title || page.url}</a>
+      <Card>
+        <CardHeader title="Chapter websites and social" description="Sites and accounts the school or its directory links to for each chapter. Websites that mention this school were opened and read too." />
+        {sitesByChapter.length === 0 ? <CardBody><p className="text-sm text-ink-3">{outreach?.research_status === "done" ? "No chapter websites or social accounts were linked from the pages we read." : "Not gathered yet."}</p></CardBody> : (
+          <ul className="divide-y divide-line">
+            {sitesByChapter.map(([chapter, links]) => (
+              <li key={chapter} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+                <p className="font-medium text-ink">{chapter}</p>
+                <span className="flex flex-wrap gap-2">
+                  {links.map((link) => (
+                    <a key={link.source_url} href={link.source_url} target="_blank" rel="noreferrer" title={link.quote ?? link.source_url} className="rounded-sm border border-line px-2 py-0.5 text-[12px] text-ink-2 hover:border-line-strong hover:text-ink">
+                      {link.detail === "Chapter website" ? new URL(link.source_url).hostname.replace(/^www\./, "") : link.detail}
+                    </a>
+                  ))}
+                </span>
               </li>
             ))}
           </ul>
+        )}
+      </Card>
+
+      {opened.length > 0 ? (
+        <details className="rounded-lg border border-line bg-surface px-5 py-3 text-sm">
+          <summary className="cursor-pointer text-ink-2">Pages opened ({opened.filter((page) => page.ok).length}{chapterPages.length > 0 ? `, ${chapterPages.length} on chapter sites` : ""})</summary>
+          {([["School site", opened.filter((page) => (page.kind ?? "school") === "school")], ["Organization directory", opened.filter((page) => page.kind === "directory")], ["Chapter sites", chapterPages]] as const).map(([label, list]) => list.length === 0 ? null : (
+            <div key={label} className="mt-3">
+              <p className="text-[12px] font-medium uppercase tracking-wide text-ink-3">{label}</p>
+              <ul className="mt-1 space-y-1">
+                {list.map((page) => (
+                  <li key={page.url} className="truncate">
+                    <a href={page.url} target="_blank" rel="noreferrer" className={page.ok ? "text-ink-2 hover:text-ink" : "text-danger"}>{page.title || page.url}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </details>
       ) : null}
 
       <Card>
         <CardHeader
           title="Emails"
-          description="Addresses found on the school's Greek life pages. Write from here, or open one for the full send history."
+          description="Addresses found on the school's Greek life pages, its organization directory, and chapter websites. Write from here, or open one for the full send history."
           actions={bulkReady && drafts.length > 0 ? (
             <div className="flex flex-wrap items-center gap-3">
               {addable.length > 0 ? <BulkToggle ids={addable} on label={`Queue the preset letter for all ${addable.length}`} /> : null}
+              {alreadySent > 0 ? <span className="text-[13px] text-ink-3">{alreadySent} already emailed, left off</span> : null}
               <Link href="/admin/outreach/bulk" className="text-sm text-ink-2 hover:text-ink">Bulk mail list</Link>
             </div>
           ) : null}
