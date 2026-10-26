@@ -18,9 +18,15 @@ export async function createConnectedAccount(input: {
       defaults: {
         currency: "usd",
         responsibilities: { fees_collector: "stripe", losses_collector: "stripe" },
+        profile: {
+          business_url: "https://greekgeek.org",
+          product_description: "Chapter dues, event fees, and other payments collected from members.",
+        },
       },
       configuration: {
         merchant: {
+          mcc: "8641",
+          statement_descriptor: { descriptor: "GREEKGEEK", prefix: "GG" },
           capabilities: {
             card_payments: { requested: true },
             ach_debit_payments: { requested: true },

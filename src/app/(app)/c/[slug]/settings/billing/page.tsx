@@ -4,7 +4,7 @@ import { Check, ExternalLink } from "lucide-react";
 import { ChapterCosts } from "@/components/chapter-costs";
 import { Badge, Card, CardBody, CardHeader, Money, Notice, Table, Td, Th, TextLink, Tr, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/forms";
-import { getMyProfile, requireChapter } from "@/lib/auth";
+import { getMyProfile, getStaffRole, requireChapter } from "@/lib/auth";
 import { getChapterPricing } from "@/lib/chapter-pricing";
 import { isStripeConfigured, isStripeLiveMode } from "@/lib/env";
 import { formatCents } from "@/lib/money";
@@ -12,7 +12,8 @@ import { getPublishedTerms } from "@/lib/pricing";
 import { getReadiness, SUBSCRIPTION_STATUS_LABEL, subscriptionInGoodStanding } from "@/lib/readiness";
 import { capabilityLabel, describeRequirement } from "@/lib/stripe/account-status";
 import { createClient } from "@/lib/supabase/server";
-import { acceptAgreement, openBillingPortal, refreshConnectStatus, startConnectOnboarding, startSubscription } from "./actions";
+import { acceptAgreement, openBillingPortal, refreshConnectStatus, startAdminSubscription, startConnectOnboarding, startSubscription } from "./actions";
+import { ADMIN_SUBSCRIPTION_CENTS } from "@/lib/stripe/subscription";
 import { AgreementForm } from "./agreement-form";
 
 export const metadata: Metadata = { title: "Billing and payments" };
@@ -49,6 +50,7 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
   const sp = await searchParams;
   const ctx = await requireChapter(slug);
   const { chapter, can } = ctx;
+  const platformAdmin = (await getStaffRole()) === "admin";
   if (!can("chapter.manage") && !can("payments.configure") && !can("finance.view")) forbidden();
 
   const supabase = await createClient();
@@ -168,6 +170,13 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
                             </SubmitButton>
                           </form>
                         ) : null}
+                        {platformAdmin && !subGood ? (
+                          <form action={startAdminSubscription.bind(null, chapter.slug)}>
+                            <SubmitButton variant="secondary" size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                              Admin subscription · {formatCents(ADMIN_SUBSCRIPTION_CENTS)}
+                            </SubmitButton>
+                          </form>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -177,11 +186,20 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
                       {formatCents(pricing.plan.priceCents)} per month, billed to the chapter. It covers every member and every feature. Cancel any time from the billing portal.
                     </p>
                     {can("chapter.manage") ? (
-                      <form action={startSubscription.bind(null, chapter.slug)}>
-                        <SubmitButton size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
-                          Activate for {formatCents(pricing.plan.priceCents)} per month
-                        </SubmitButton>
-                      </form>
+                      <div className="flex flex-wrap gap-2">
+                        <form action={startSubscription.bind(null, chapter.slug)}>
+                          <SubmitButton size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                            Activate for {formatCents(pricing.plan.priceCents)} per month
+                          </SubmitButton>
+                        </form>
+                        {platformAdmin ? (
+                          <form action={startAdminSubscription.bind(null, chapter.slug)}>
+                            <SubmitButton variant="secondary" size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                              Admin subscription · {formatCents(ADMIN_SUBSCRIPTION_CENTS)}
+                            </SubmitButton>
+                          </form>
+                        ) : null}
+                      </div>
                     ) : (
                       <p className="text-[13px] text-ink-3">A chapter administrator can activate the subscription.</p>
                     )}
@@ -215,8 +233,8 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
                   {account && (account.requirements_due?.length || account.requirements_past_due?.length) ? (
                     <Notice tone={account.requirements_past_due?.length ? "danger" : "warning"} title="Stripe needs more information">
                       <ul className="list-disc pl-4">
-                        {[...(account.requirements_past_due ?? []), ...(account.requirements_due ?? [])].slice(0, 8).map((r: string) => (
-                          <li key={r}>{describeRequirement(r)}</li>
+                        {[...new Set([...(account.requirements_past_due ?? []), ...(account.requirements_due ?? [])].map((r: string) => describeRequirement(r)))].map((label) => (
+                          <li key={label}>{label}</li>
                         ))}
                       </ul>
                     </Notice>

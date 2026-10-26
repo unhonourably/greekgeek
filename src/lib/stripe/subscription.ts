@@ -3,6 +3,21 @@ import { stripe } from "@/lib/stripe/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUBSCRIPTION_PLAN_CODE } from "@/lib/stripe/webhook-processor";
 
+export const ADMIN_SUBSCRIPTION_CENTS = 50;
+const ADMIN_SUBSCRIPTION_PRICE_ID = "price_1UUbBO2f6OMJILR4A5xBmG2X";
+
+async function latestStripeCustomerId(chapterId: string): Promise<string | null> {
+  const { data } = await createAdminClient()
+    .from("chapter_subscriptions")
+    .select("stripe_customer_id")
+    .eq("chapter_id", chapterId)
+    .not("stripe_customer_id", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.stripe_customer_id ?? null;
+}
+
 export async function createSubscriptionCheckout(input: {
   chapterId: string;
   chapterName: string;
@@ -18,20 +33,13 @@ export async function createSubscriptionCheckout(input: {
     .eq("active", true)
     .single();
   if (error || !plan) throw new Error("The subscription plan is not configured.");
-  const { data: existing } = await admin
-    .from("chapter_subscriptions")
-    .select("stripe_customer_id")
-    .eq("chapter_id", input.chapterId)
-    .not("stripe_customer_id", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const customerId = await latestStripeCustomerId(input.chapterId);
 
   const session = await stripe().checkout.sessions.create(
     {
       mode: "subscription",
       client_reference_id: input.chapterId,
-      ...(existing?.stripe_customer_id ? { customer: existing.stripe_customer_id } : { customer_email: input.email }),
+      ...(customerId ? { customer: customerId } : { customer_email: input.email }),
       line_items: [
         plan.stripe_price_id
           ? { price: plan.stripe_price_id, quantity: 1 }
@@ -51,6 +59,30 @@ export async function createSubscriptionCheckout(input: {
       cancel_url: input.cancelUrl,
     },
     { idempotencyKey: `subscription-checkout:${input.chapterId}:${Math.floor(Date.now() / 600_000)}` },
+  );
+  if (!session.url) throw new Error("Stripe did not return a checkout URL");
+  return session.url;
+}
+
+export async function createAdminSubscriptionCheckout(input: {
+  chapterId: string;
+  email: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<string> {
+  const customerId = await latestStripeCustomerId(input.chapterId);
+  const session = await stripe().checkout.sessions.create(
+    {
+      mode: "subscription",
+      client_reference_id: input.chapterId,
+      ...(customerId ? { customer: customerId } : { customer_email: input.email }),
+      line_items: [{ price: ADMIN_SUBSCRIPTION_PRICE_ID, quantity: 1 }],
+      subscription_data: { metadata: { chapter_id: input.chapterId, purpose: "admin_subscription" } },
+      metadata: { chapter_id: input.chapterId, purpose: "admin_subscription" },
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+    },
+    { idempotencyKey: `admin-subscription-checkout:${input.chapterId}:${Math.floor(Date.now() / 600_000)}` },
   );
   if (!session.url) throw new Error("Stripe did not return a checkout URL");
   return session.url;

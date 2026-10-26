@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getChapterContext } from "@/lib/auth";
-import { serverEnv } from "@/lib/env";
+import { stripeRedirectOrigin } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createOnboardingLink } from "@/lib/stripe/connect";
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     fallback.pathname = `/c/${slug}/settings/billing`;
     return NextResponse.redirect(fallback);
   }
-  const app = serverEnv.appUrl();
+  const app = stripeRedirectOrigin(request.nextUrl.origin);
   const url = await createOnboardingLink(
     data.stripe_account_id,
     `${app}/api/connect/refresh?chapter=${encodeURIComponent(slug)}`,

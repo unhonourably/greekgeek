@@ -2,14 +2,14 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { forbidden, redirect } from "next/navigation";
 import { z } from "zod";
-import { requireChapter } from "@/lib/auth";
+import { getStaffRole, requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, zodState } from "@/lib/errors";
-import { isStripeConfigured, serverEnv } from "@/lib/env";
-import { createBillingPortal, createSubscriptionCheckout } from "@/lib/stripe/subscription";
+import { isStripeConfigured, serverEnv, stripeRedirectOrigin } from "@/lib/env";
+import { createAdminSubscriptionCheckout, createBillingPortal, createSubscriptionCheckout } from "@/lib/stripe/subscription";
 import { createConnectedAccount, createOnboardingLink, syncConnectedAccount } from "@/lib/stripe/connect";
 import type { ActionState } from "@/lib/action-state";
 
@@ -46,8 +46,16 @@ export async function acceptAgreement(slug: string, _: ActionState, formData: Fo
   return { ok: true, message: "Agreement accepted." };
 }
 
-function billingUrl(slug: string, query = ""): string {
-  return `${serverEnv.appUrl()}/c/${slug}/settings/billing${query}`;
+async function publicOrigin(): Promise<string> {
+  const h = await headers();
+  const host = (h.get("x-forwarded-host") ?? h.get("host"))?.split(",")[0]?.trim();
+  if (!host) return serverEnv.appUrl();
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+function billingUrl(origin: string, slug: string, query = ""): string {
+  return `${origin}/c/${slug}/settings/billing${query}`;
 }
 
 export async function startSubscription(slug: string): Promise<void> {
@@ -61,12 +69,35 @@ export async function startSubscription(slug: string): Promise<void> {
     .is("superseded_at", null)
     .maybeSingle();
   if (!agreement) redirect(`/c/${slug}/settings/billing?error=agreement`);
+  const origin = await publicOrigin();
   const url = await createSubscriptionCheckout({
     chapterId: ctx.chapter.id,
     chapterName: [ctx.chapter.organization_name, ctx.chapter.designation].filter(Boolean).join(", "),
     email: ctx.user.email,
-    successUrl: billingUrl(slug, "?subscription=success"),
-    cancelUrl: billingUrl(slug, "?subscription=canceled"),
+    successUrl: billingUrl(origin, slug, "?subscription=success"),
+    cancelUrl: billingUrl(origin, slug, "?subscription=canceled"),
+  });
+  redirect(url);
+}
+
+export async function startAdminSubscription(slug: string): Promise<void> {
+  const ctx = await requireChapter(slug, "chapter.manage");
+  if ((await getStaffRole()) !== "admin") forbidden();
+  if (!isStripeConfigured()) redirect(`/c/${slug}/settings/billing?error=stripe`);
+  const supabase = await createClient();
+  const { data: agreement } = await supabase
+    .from("chapter_agreements")
+    .select("id")
+    .eq("chapter_id", ctx.chapter.id)
+    .is("superseded_at", null)
+    .maybeSingle();
+  if (!agreement) redirect(`/c/${slug}/settings/billing?error=agreement`);
+  const origin = await publicOrigin();
+  const url = await createAdminSubscriptionCheckout({
+    chapterId: ctx.chapter.id,
+    email: ctx.user.email,
+    successUrl: billingUrl(origin, slug, "?subscription=success"),
+    cancelUrl: billingUrl(origin, slug, "?subscription=canceled"),
   });
   redirect(url);
 }
@@ -74,7 +105,7 @@ export async function startSubscription(slug: string): Promise<void> {
 export async function openBillingPortal(slug: string): Promise<void> {
   const ctx = await requireChapter(slug, "chapter.manage");
   if (!isStripeConfigured()) redirect(`/c/${slug}/settings/billing?error=stripe`);
-  const url = await createBillingPortal(ctx.chapter.id, billingUrl(slug));
+  const url = await createBillingPortal(ctx.chapter.id, billingUrl(await publicOrigin(), slug));
   redirect(url ?? `/c/${slug}/settings/billing?error=portal`);
 }
 
@@ -100,7 +131,8 @@ export async function startConnectOnboarding(slug: string): Promise<void> {
       contactEmail: ctx.user.email,
       createdBy: ctx.user.id,
     }));
-  const url = await createOnboardingLink(accountId, `${serverEnv.appUrl()}/api/connect/refresh?chapter=${encodeURIComponent(slug)}`, `${serverEnv.appUrl()}/api/connect/return?chapter=${encodeURIComponent(slug)}`);
+  const origin = stripeRedirectOrigin(await publicOrigin());
+  const url = await createOnboardingLink(accountId, `${origin}/api/connect/refresh?chapter=${encodeURIComponent(slug)}`, `${origin}/api/connect/return?chapter=${encodeURIComponent(slug)}`);
   redirect(url);
 }
 

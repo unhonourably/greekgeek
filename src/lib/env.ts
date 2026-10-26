@@ -57,3 +57,19 @@ export function isStripeConfigured(): boolean {
 export function isStripeLiveMode(): boolean {
   return (read("STRIPE_SECRET_KEY") ?? "").startsWith("sk_live_");
 }
+
+export function stripeRedirectOrigin(requestOrigin?: string | null): string {
+  const candidates = [requestOrigin, serverEnv.appUrl(), serverEnv.outreachSiteUrl()];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+      const allowed = isStripeLiveMode() ? url.protocol === "https:" && !local : url.protocol === "https:" || url.protocol === "http:";
+      if (allowed) return url.origin;
+    } catch {
+      continue;
+    }
+  }
+  return serverEnv.outreachSiteUrl();
+}
