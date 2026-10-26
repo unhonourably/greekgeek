@@ -3,7 +3,7 @@ import { forbidden } from "next/navigation";
 import { Check, ExternalLink } from "lucide-react";
 import { ChapterCosts } from "@/components/chapter-costs";
 import { Badge, Card, CardBody, CardHeader, Money, Notice, Table, Td, Th, TextLink, Tr, cx } from "@/components/ui";
-import { SubmitButton } from "@/components/forms";
+import { ExternalActionForm, ExternalSubmitButton, SubmitButton } from "@/components/forms";
 import { getMyProfile, getStaffRole, requireChapter } from "@/lib/auth";
 import { getChapterPricing } from "@/lib/chapter-pricing";
 import { isStripeConfigured, isStripeLiveMode } from "@/lib/env";
@@ -157,25 +157,25 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
                     {!subGood ? <p className="text-[13px] text-danger">Online dues collection is paused until the subscription is active.</p> : null}
                     {can("chapter.manage") ? (
                       <div className="flex flex-wrap gap-2">
-                        <form action={openBillingPortal.bind(null, chapter.slug)}>
-                          <SubmitButton variant="secondary" size="sm" pendingLabel="Opening">
+                        <ExternalActionForm action={openBillingPortal.bind(null, chapter.slug)}>
+                          <ExternalSubmitButton variant="secondary" size="sm" pendingLabel="Opening">
                             Manage billing
                             <ExternalLink className="size-3.5" aria-hidden />
-                          </SubmitButton>
-                        </form>
+                          </ExternalSubmitButton>
+                        </ExternalActionForm>
                         {!subGood ? (
-                          <form action={startSubscription.bind(null, chapter.slug)}>
-                            <SubmitButton size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                          <ExternalActionForm action={startSubscription.bind(null, chapter.slug)}>
+                            <ExternalSubmitButton size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
                               Restart subscription
-                            </SubmitButton>
-                          </form>
+                            </ExternalSubmitButton>
+                          </ExternalActionForm>
                         ) : null}
                         {platformAdmin && !subGood ? (
-                          <form action={startAdminSubscription.bind(null, chapter.slug)}>
-                            <SubmitButton variant="secondary" size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                          <ExternalActionForm action={startAdminSubscription.bind(null, chapter.slug)}>
+                            <ExternalSubmitButton variant="secondary" size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
                               Admin subscription · {formatCents(ADMIN_SUBSCRIPTION_CENTS)}
-                            </SubmitButton>
-                          </form>
+                            </ExternalSubmitButton>
+                          </ExternalActionForm>
                         ) : null}
                       </div>
                     ) : null}
@@ -187,17 +187,17 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
                     </p>
                     {can("chapter.manage") ? (
                       <div className="flex flex-wrap gap-2">
-                        <form action={startSubscription.bind(null, chapter.slug)}>
-                          <SubmitButton size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                        <ExternalActionForm action={startSubscription.bind(null, chapter.slug)}>
+                          <ExternalSubmitButton size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
                             Activate for {formatCents(pricing.plan.priceCents)} per month
-                          </SubmitButton>
-                        </form>
+                          </ExternalSubmitButton>
+                        </ExternalActionForm>
                         {platformAdmin ? (
-                          <form action={startAdminSubscription.bind(null, chapter.slug)}>
-                            <SubmitButton variant="secondary" size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
+                          <ExternalActionForm action={startAdminSubscription.bind(null, chapter.slug)}>
+                            <ExternalSubmitButton variant="secondary" size="sm" pendingLabel="Opening checkout" disabled={!termsAccepted || !stripeOn}>
                               Admin subscription · {formatCents(ADMIN_SUBSCRIPTION_CENTS)}
-                            </SubmitButton>
-                          </form>
+                            </ExternalSubmitButton>
+                          </ExternalActionForm>
                         ) : null}
                       </div>
                     ) : (
@@ -242,11 +242,11 @@ export default async function BillingPage({ params, searchParams }: PageProps<"/
                   {can("payments.configure") ? (
                     <div className="flex flex-wrap gap-2">
                       {!connectReady ? (
-                        <form action={startConnectOnboarding.bind(null, chapter.slug)}>
-                          <SubmitButton size="sm" pendingLabel="Opening Stripe" disabled={!termsAccepted || !stripeOn || chapter.status !== "verified"}>
+                        <ExternalActionForm action={startConnectOnboarding.bind(null, chapter.slug)}>
+                          <ExternalSubmitButton size="sm" pendingLabel="Opening Stripe" disabled={!termsAccepted || !stripeOn || chapter.status !== "verified"}>
                             {account ? "Continue Stripe setup" : "Set up Stripe"}
-                          </SubmitButton>
-                        </form>
+                          </ExternalSubmitButton>
+                        </ExternalActionForm>
                       ) : null}
                       {account ? (
                         <form action={refreshConnectStatus.bind(null, chapter.slug)}>

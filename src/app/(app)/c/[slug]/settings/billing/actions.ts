@@ -58,9 +58,9 @@ function billingUrl(origin: string, slug: string, query = ""): string {
   return `${origin}/c/${slug}/settings/billing${query}`;
 }
 
-export async function startSubscription(slug: string): Promise<void> {
+export async function startSubscription(slug: string): Promise<string> {
   const ctx = await requireChapter(slug, "chapter.manage");
-  if (!isStripeConfigured()) redirect(`/c/${slug}/settings/billing?error=stripe`);
+  if (!isStripeConfigured()) return `/c/${slug}/settings/billing?error=stripe`;
   const supabase = await createClient();
   const { data: agreement } = await supabase
     .from("chapter_agreements")
@@ -68,22 +68,21 @@ export async function startSubscription(slug: string): Promise<void> {
     .eq("chapter_id", ctx.chapter.id)
     .is("superseded_at", null)
     .maybeSingle();
-  if (!agreement) redirect(`/c/${slug}/settings/billing?error=agreement`);
+  if (!agreement) return `/c/${slug}/settings/billing?error=agreement`;
   const origin = await publicOrigin();
-  const url = await createSubscriptionCheckout({
+  return createSubscriptionCheckout({
     chapterId: ctx.chapter.id,
     chapterName: [ctx.chapter.organization_name, ctx.chapter.designation].filter(Boolean).join(", "),
     email: ctx.user.email,
     successUrl: billingUrl(origin, slug, "?subscription=success"),
     cancelUrl: billingUrl(origin, slug, "?subscription=canceled"),
   });
-  redirect(url);
 }
 
-export async function startAdminSubscription(slug: string): Promise<void> {
+export async function startAdminSubscription(slug: string): Promise<string> {
   const ctx = await requireChapter(slug, "chapter.manage");
   if ((await getStaffRole()) !== "admin") forbidden();
-  if (!isStripeConfigured()) redirect(`/c/${slug}/settings/billing?error=stripe`);
+  if (!isStripeConfigured()) return `/c/${slug}/settings/billing?error=stripe`;
   const supabase = await createClient();
   const { data: agreement } = await supabase
     .from("chapter_agreements")
@@ -91,28 +90,27 @@ export async function startAdminSubscription(slug: string): Promise<void> {
     .eq("chapter_id", ctx.chapter.id)
     .is("superseded_at", null)
     .maybeSingle();
-  if (!agreement) redirect(`/c/${slug}/settings/billing?error=agreement`);
+  if (!agreement) return `/c/${slug}/settings/billing?error=agreement`;
   const origin = await publicOrigin();
-  const url = await createAdminSubscriptionCheckout({
+  return createAdminSubscriptionCheckout({
     chapterId: ctx.chapter.id,
     email: ctx.user.email,
     successUrl: billingUrl(origin, slug, "?subscription=success"),
     cancelUrl: billingUrl(origin, slug, "?subscription=canceled"),
   });
-  redirect(url);
 }
 
-export async function openBillingPortal(slug: string): Promise<void> {
+export async function openBillingPortal(slug: string): Promise<string> {
   const ctx = await requireChapter(slug, "chapter.manage");
-  if (!isStripeConfigured()) redirect(`/c/${slug}/settings/billing?error=stripe`);
+  if (!isStripeConfigured()) return `/c/${slug}/settings/billing?error=stripe`;
   const url = await createBillingPortal(ctx.chapter.id, billingUrl(await publicOrigin(), slug));
-  redirect(url ?? `/c/${slug}/settings/billing?error=portal`);
+  return url ?? `/c/${slug}/settings/billing?error=portal`;
 }
 
-export async function startConnectOnboarding(slug: string): Promise<void> {
+export async function startConnectOnboarding(slug: string): Promise<string> {
   const ctx = await requireChapter(slug, "payments.configure");
-  if (!isStripeConfigured()) redirect(`/c/${slug}/settings/billing?error=stripe`);
-  if (ctx.chapter.status !== "verified") redirect(`/c/${slug}/settings/billing?error=verified`);
+  if (!isStripeConfigured()) return `/c/${slug}/settings/billing?error=stripe`;
+  if (ctx.chapter.status !== "verified") return `/c/${slug}/settings/billing?error=verified`;
   const supabase = await createClient();
   const { data: agreement } = await supabase
     .from("chapter_agreements")
@@ -120,7 +118,7 @@ export async function startConnectOnboarding(slug: string): Promise<void> {
     .eq("chapter_id", ctx.chapter.id)
     .is("superseded_at", null)
     .maybeSingle();
-  if (!agreement) redirect(`/c/${slug}/settings/billing?error=agreement`);
+  if (!agreement) return `/c/${slug}/settings/billing?error=agreement`;
   const admin = createAdminClient();
   const { data: existing } = await admin.from("connected_accounts").select("stripe_account_id").eq("chapter_id", ctx.chapter.id).maybeSingle();
   const accountId =
@@ -132,8 +130,7 @@ export async function startConnectOnboarding(slug: string): Promise<void> {
       createdBy: ctx.user.id,
     }));
   const origin = stripeRedirectOrigin(await publicOrigin());
-  const url = await createOnboardingLink(accountId, `${origin}/api/connect/refresh?chapter=${encodeURIComponent(slug)}`, `${origin}/api/connect/return?chapter=${encodeURIComponent(slug)}`);
-  redirect(url);
+  return createOnboardingLink(accountId, `${origin}/api/connect/refresh?chapter=${encodeURIComponent(slug)}`, `${origin}/api/connect/return?chapter=${encodeURIComponent(slug)}`);
 }
 
 export async function refreshConnectStatus(slug: string): Promise<void> {

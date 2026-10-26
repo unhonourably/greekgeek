@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireChapter } from "@/lib/auth";
@@ -12,18 +11,18 @@ import { splitIntoInstallments, validateSchedule } from "@/lib/installments";
 import { rateLimit } from "@/lib/rate-limit";
 import type { ActionState } from "@/lib/action-state";
 
-export async function payCharge(slug: string, formData: FormData): Promise<void> {
+export async function payCharge(slug: string, formData: FormData): Promise<string> {
   const ctx = await requireChapter(slug);
   const base = `/c/${slug}/dues`;
   const ma = String(formData.get("member_assessment") ?? "");
   const inst = String(formData.get("installment") ?? "");
-  if (!z.uuid().safeParse(ma).success) redirect(`${base}?error=invalid`);
-  if (inst && !z.uuid().safeParse(inst).success) redirect(`${base}?error=invalid`);
-  if (!isStripeConfigured()) redirect(`${base}?error=stripe`);
-  if (!rateLimit(`checkout:${ctx.user.id}`, 10, 10 * 60_000)) redirect(`${base}?error=rate`);
+  if (!z.uuid().safeParse(ma).success) return `${base}?error=invalid`;
+  if (inst && !z.uuid().safeParse(inst).success) return `${base}?error=invalid`;
+  if (!isStripeConfigured()) return `${base}?error=stripe`;
+  if (!rateLimit(`checkout:${ctx.user.id}`, 10, 10 * 60_000)) return `${base}?error=rate`;
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("create_pending_payment", { p_member_assessment: ma, p_installment: inst || null, p_amount: null });
-  if (error || !data) redirect(`${base}?error=${encodeURIComponent(dbErrorMessage(error, "Could not start the payment.").slice(0, 160))}`);
+  if (error || !data) return `${base}?error=${encodeURIComponent(dbErrorMessage(error, "Could not start the payment.").slice(0, 160))}`;
   const payment = data as PendingPaymentRow;
   const { data: charge } = await supabase.from("member_assessment_balances").select("title").eq("id", ma).maybeSingle();
   const app = serverEnv.appUrl();
@@ -35,7 +34,7 @@ export async function payCharge(slug: string, formData: FormData): Promise<void>
     successUrl: `${app}${base}?checkout=success&payment=${payment.id}`,
     cancelUrl: `${app}${base}?checkout=canceled`,
   });
-  redirect(url);
+  return url;
 }
 
 export async function createPlan(slug: string, _: ActionState, formData: FormData): Promise<ActionState> {

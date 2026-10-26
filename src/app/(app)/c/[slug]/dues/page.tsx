@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CreditCard, ReceiptText } from "lucide-react";
 import { Badge, Card, CardBody, CardHeader, EmptyState, Money, Notice, PageHeader, Table, Td, Th, Tr } from "@/components/ui";
-import { ConfirmSubmit, SubmitButton } from "@/components/forms";
+import { ConfirmSubmit, ExternalActionForm, ExternalSubmitButton } from "@/components/forms";
 import { requireChapter } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents } from "@/lib/money";
@@ -127,13 +127,13 @@ export default async function DuesPage({ params, searchParams }: PageProps<"/c/[
                     <div className="flex items-center gap-3">
                       <Money cents={Number(c.outstanding_cents)} className="text-lg font-semibold" />
                       {canPayOnline && !clearing ? (
-                        <form action={pay}>
+                        <ExternalActionForm action={pay}>
                           <input type="hidden" name="member_assessment" value={c.id} />
                           {nextInstallment ? <input type="hidden" name="installment" value={nextInstallment.id} /> : null}
-                          <SubmitButton size="sm" pendingLabel="Opening checkout">
+                          <ExternalSubmitButton size="sm" pendingLabel="Opening checkout">
                             {nextInstallment ? `Pay ${formatCents(Math.min(Number(nextInstallment.amount_cents), Number(c.outstanding_cents)))}` : "Pay now"}
-                          </SubmitButton>
-                        </form>
+                          </ExternalSubmitButton>
+                        </ExternalActionForm>
                       ) : null}
                     </div>
                   </div>
